@@ -1,0 +1,425 @@
+<!doctype html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Padelent | Online padel lessons from real coaches</title>
+<meta name="description" content="Send a video of your padel and get a personal video lesson back from a real coach. Padel plus talent.">
+<meta property="og:title" content="Padelent | Online padel lessons from real coaches">
+<meta property="og:description" content="Send a video of your padel and get a personal video lesson back from a real coach.">
+<meta property="og:url" content="https://padelent.com/">
+<meta name="theme-color" content="#0A1420">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@600;700;800;900&family=DM+Sans:wght@400;500;700&display=swap">
+<style>
+:root { --navy: #0A1420; --panel: #1B2530; --accent: #D7F23A; --soft: #D5DEE6; --muted: #A9B8C6; color-scheme: dark; }
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+body { margin: 0; background: var(--navy); color: #FFFFFF; font-family: 'DM Sans', system-ui, sans-serif; }
+h1, h2, h3 { text-wrap: balance; }
+a:focus-visible, button:focus-visible, input:focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; }
+dialog.signup { width: min(460px, calc(100% - 32px)); padding: 0; border: 1px solid rgba(255,255,255,0.28); border-radius: 20px; background: var(--panel); color: #FFFFFF; }
+dialog.signup::backdrop { background: rgba(5, 10, 16, 0.75); }
+.signup form { padding: 32px; display: flex; flex-direction: column; gap: 18px; }
+.signup h2 { margin: 0; font-family: 'Archivo', sans-serif; font-weight: 800; font-size: 30px; letter-spacing: -0.02em; }
+.signup p { margin: 0; color: var(--soft); }
+.signup label.field { font-size: 14px; font-weight: 700; }
+.signup input[type=email] { width: 100%; height: 56px; padding: 0 18px; border-radius: 8px; border: 1px solid #7C8FA3; background: #14212F; color: #FFFFFF; font: inherit; font-size: 17px; margin-top: 8px; }
+.signup fieldset { border: 0; padding: 0; margin: 0; display: flex; gap: 10px; flex-wrap: wrap; }
+.signup legend { font-size: 14px; font-weight: 700; margin-bottom: 8px; }
+.signup .choice { flex: 1 1 140px; }
+.signup .choice input { position: absolute; opacity: 0; }
+.signup .choice span { display: flex; align-items: center; justify-content: center; min-height: 52px; border: 2px solid #5C7189; border-radius: 8px; font-weight: 700; cursor: pointer; }
+.signup .choice input:checked + span { border-color: var(--accent); background: var(--accent); color: var(--navy); }
+.signup .choice input:focus-visible + span { outline: 3px solid var(--accent); outline-offset: 3px; }
+.signup button[type=submit] { height: 56px; border: 0; border-radius: 8px; background: var(--accent); color: var(--navy); font: inherit; font-size: 17px; font-weight: 700; cursor: pointer; }
+.signup button[disabled] { opacity: 0.6; cursor: wait; }
+.signup .close { position: absolute; top: 12px; right: 12px; width: 44px; height: 44px; border: 0; background: none; color: #FFFFFF; font-size: 28px; line-height: 1; cursor: pointer; }
+.signup .msg { min-height: 24px; font-weight: 700; color: var(--accent); }
+.signup .note { font-size: 14px; color: var(--muted); }
+.signup .note a { color: var(--muted); }
+@media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+</style>
+</head>
+<body>
+<div style="background: #0A1420; color: #FFFFFF; font-family: 'DM Sans', system-ui, sans-serif; font-size: 17px; line-height: 1.55">
+
+<section id="top" style="position: relative; overflow: hidden">
+<svg aria-hidden="true" viewBox="0 0 1440 820" preserveAspectRatio="xMidYMin slice" fill="none" style="position: absolute; left: 0; top: 0; width: 100%; height: 100%; opacity: 0.13"><path d="M370 104H1070M370 104L-223 840M1070 104L1663 840" stroke="#FFFFFF" stroke-width="2"></path><path d="M327 157H1113M-159 760H1599M720 157V760" stroke="#FFFFFF" stroke-width="3"></path><path d="M177 343H1263" stroke="#FFFFFF" stroke-width="6"></path></svg>
+
+<header style="position: relative; max-width: 1240px; margin: 0 auto; padding: 24px 24px; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px 24px">
+<a href="#top" style="display: flex; align-items: center; gap: 10px; color: #FFFFFF; text-decoration: none; font-family: 'Archivo', sans-serif; font-weight: 800; font-size: 26px; letter-spacing: -0.01em; min-height: 44px">
+<svg aria-hidden="true" width="28" height="28" viewBox="0 0 28 28" fill="none"><circle cx="14" cy="14" r="12" fill="#D7F23A"></circle><path d="M4 9c5 2 7 8 5 15M24 19c-5-2-7-8-5-15" stroke="#0A1420" stroke-width="1.8" stroke-linecap="round"></path></svg>
+Padelent
+</a>
+<nav aria-label="Main" style="display: flex; flex-wrap: wrap; align-items: center; gap: 4px 32px">
+<a href="#how" style="color: #FFFFFF; text-decoration: none; font-weight: 700; min-height: 44px; display: flex; align-items: center">How it works</a>
+<a href="#coaches" style="color: #FFFFFF; text-decoration: none; font-weight: 700; min-height: 44px; display: flex; align-items: center">Become a coach</a>
+<a href="#join" style="color: #FFFFFF; text-decoration: none; font-weight: 700; min-height: 44px; display: flex; align-items: center">Log in</a>
+<a href="#join" style="background: #D7F23A; color: #0A1420; text-decoration: none; font-weight: 700; padding: 0 22px; min-height: 46px; border-radius: 999px; display: flex; align-items: center">Get started</a>
+</nav>
+</header>
+
+<div style="position: relative; max-width: 1160px; margin: 0 auto; padding: 72px 24px 140px; display: flex; flex-direction: column; align-items: center; gap: 56px">
+<div style="display: flex; flex-direction: column; align-items: center; gap: 72px">
+<div style="font-family: 'Archivo', sans-serif; font-weight: 800; font-size: 21px; letter-spacing: 0.14em; line-height: 1.1; text-align: center; text-transform: uppercase; color: #D7F23A">Padel plus talent</div>
+<h1 style="margin: 0; max-width: 980px; text-align: center; font-family: 'Archivo', sans-serif; font-weight: 800; font-size: clamp(38px, 5vw, 68px); line-height: 1.08; letter-spacing: -0.02em">Online padel lessons from <span style="color: #D7F23A">real coaches</span></h1>
+</div>
+
+<div style="width: 100%; display: flex; flex-wrap: wrap; gap: 24px">
+
+<div style="flex: 1 1 380px; min-width: 0; background: #1B2530; border: 1px solid rgba(255,255,255,0.28); border-radius: 16px; padding: 32px; display: flex; flex-direction: column; gap: 16px">
+<div style="display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: #D5DEE6">
+<svg aria-hidden="true" width="18" height="18" viewBox="0 0 18 18" fill="none"><circle cx="9" cy="9" r="7.5" stroke="#D7F23A" stroke-width="1.6"></circle><circle cx="9" cy="9" r="3.5" stroke="#D7F23A" stroke-width="1.6"></circle></svg>
+For players
+</div>
+<h2 style="margin: 0; font-family: 'Archivo', sans-serif; font-weight: 800; font-size: clamp(28px, 3vw, 38px); line-height: 1.1; letter-spacing: -0.02em">Find a coach for your game</h2>
+<p style="margin: 0; color: #D5DEE6">Send a video of your padel and get a personal video lesson and drills back from a coach you choose.</p>
+<div style="display: flex; flex-wrap: wrap; gap: 12px; margin-top: 8px">
+<a href="#join" style="flex: 1 1 180px; background: #D7F23A; color: #0A1420; text-decoration: none; font-weight: 700; min-height: 56px; border-radius: 8px; display: flex; align-items: center; justify-content: center">Get started</a>
+<a href="#how" style="flex: 1 1 180px; color: #FFFFFF; text-decoration: none; font-weight: 700; min-height: 56px; border: 2px solid #FFFFFF; border-radius: 8px; display: flex; align-items: center; justify-content: center">Browse coaches</a>
+</div>
+</div>
+
+<div style="flex: 1 1 380px; min-width: 0; background: #1B2530; border: 1px solid rgba(255,255,255,0.28); border-radius: 16px; padding: 32px; display: flex; flex-direction: column; gap: 16px">
+<div style="display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: #D5DEE6">
+<svg aria-hidden="true" width="18" height="18" viewBox="0 0 18 18" fill="none"><path d="M2 13l5-5 3 3 6-6M12 5h4v4" stroke="#FFFFFF" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+For coaches
+</div>
+<h2 style="margin: 0; font-family: 'Archivo', sans-serif; font-weight: 800; font-size: clamp(28px, 3vw, 38px); line-height: 1.1; letter-spacing: -0.02em">Teach more players online</h2>
+<p style="margin: 0; color: #D5DEE6">Set your own prices, coach from anywhere and get new students through Padelent.</p>
+<div style="display: flex; margin-top: auto; padding-top: 8px">
+<a href="#coaches" style="flex: 1 1 auto; color: #FFFFFF; text-decoration: none; font-weight: 700; min-height: 56px; border: 2px solid #FFFFFF; border-radius: 8px; display: flex; align-items: center; justify-content: center">Start coaching</a>
+</div>
+</div>
+
+</div>
+<a href="https://www.instagram.com/padelent/" aria-label="Padelent on Instagram" style="display: flex; align-items: center; gap: 10px; background: #1B2530; color: #FFFFFF; text-decoration: none; font-weight: 700; padding: 0 24px; min-height: 52px; border: 2px solid #FFFFFF; border-radius: 999px"><svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="5"></rect><circle cx="12" cy="12" r="4"></circle><circle cx="17.5" cy="6.5" r="1.2" fill="currentColor" stroke="none"></circle></svg>@padelent</a>
+</div>
+</section>
+
+<section id="how" style="background: #F4F7FA; color: #0B1B2B">
+<div style="max-width: 1160px; margin: 0 auto; padding: 96px 24px; display: flex; flex-direction: column; gap: 48px">
+<div style="display: flex; flex-direction: column; gap: 12px; max-width: 640px">
+<div style="font-size: 14px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: #4A5A68">How it works</div>
+<h2 style="margin: 0; font-family: 'Archivo', sans-serif; font-weight: 800; font-size: clamp(32px, 4vw, 52px); line-height: 1.05; letter-spacing: -0.02em">Three steps, no court booking.</h2>
+</div>
+<div style="display: flex; flex-wrap: wrap; gap: 24px">
+
+<div style="flex: 1 1 280px; min-width: 0; background: #FFFFFF; border: 1px solid #D3DBE3; border-radius: 16px; padding: 28px; display: flex; flex-direction: column; gap: 14px">
+<div style="width: 48px; height: 48px; border-radius: 999px; background: #0A1420; color: #D7F23A; font-family: 'Archivo', sans-serif; font-weight: 800; font-size: 22px; display: flex; align-items: center; justify-content: center">1</div>
+<h3 style="margin: 0; font-family: 'Archivo', sans-serif; font-weight: 800; font-size: 24px">Choose your coach</h3>
+<p style="margin: 0; color: #4A5A68">Browse coach profiles, see what each one specialises in and what they charge, and pick the one that fits your game.</p>
+</div>
+
+<div style="flex: 1 1 280px; min-width: 0; background: #FFFFFF; border: 1px solid #D3DBE3; border-radius: 16px; padding: 28px; display: flex; flex-direction: column; gap: 14px">
+<div style="width: 48px; height: 48px; border-radius: 999px; background: #0A1420; color: #D7F23A; font-family: 'Archivo', sans-serif; font-weight: 800; font-size: 22px; display: flex; align-items: center; justify-content: center">2</div>
+<h3 style="margin: 0; font-family: 'Archivo', sans-serif; font-weight: 800; font-size: 24px">Send your video</h3>
+<p style="margin: 0; color: #4A5A68">Prop your phone at the back of the court, film a few points, and upload the clip with a note on what you want fixed.</p>
+</div>
+
+<div style="flex: 1 1 280px; min-width: 0; background: #FFFFFF; border: 1px solid #D3DBE3; border-radius: 16px; padding: 28px; display: flex; flex-direction: column; gap: 14px">
+<div style="width: 48px; height: 48px; border-radius: 999px; background: #0A1420; color: #D7F23A; font-family: 'Archivo', sans-serif; font-weight: 800; font-size: 22px; display: flex; align-items: center; justify-content: center">3</div>
+<h3 style="margin: 0; font-family: 'Archivo', sans-serif; font-weight: 800; font-size: 24px">Get your lesson back</h3>
+<p style="margin: 0; color: #4A5A68">Your coach replies with a video breakdown and drills. Ask follow-up questions in the same thread whenever you get stuck.</p>
+</div>
+
+</div>
+</div>
+</section>
+
+<section style="background: #FFFFFF; color: #0B1B2B">
+<div style="max-width: 1160px; margin: 0 auto; padding: 96px 24px; display: flex; flex-wrap: wrap; gap: 56px">
+<div style="flex: 1 1 360px; min-width: 0; display: flex; flex-direction: column; gap: 28px">
+<div style="display: flex; flex-direction: column; gap: 16px">
+<div style="font-size: 14px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: #4A5A68">Why Padelent</div>
+<h2 style="margin: 0; font-family: 'Archivo', sans-serif; font-weight: 800; font-size: clamp(32px, 4vw, 48px); line-height: 1.05; letter-spacing: -0.02em">A person who watches your game, not a bot that scores it.</h2>
+</div>
+
+<div style="width: 100%; max-width: 420px; background: #F4F7FA; border: 1px solid #D3DBE3; border-radius: 24px; padding: 20px; display: flex; flex-direction: column; gap: 14px">
+<div style="display: flex; align-items: center; justify-content: space-between; gap: 12px">
+<div style="display: flex; flex-direction: column">
+<div style="font-family: 'Archivo', sans-serif; font-weight: 800; font-size: 18px">Lesson: bandeja</div>
+<div style="font-size: 14px; color: #4A5A68">with your coach</div>
+</div>
+<div style="font-size: 12px; font-weight: 700; color: #4A5A68; border: 1px solid #B7C3CE; border-radius: 999px; padding: 4px 10px">Example</div>
+</div>
+<div style="align-self: flex-end; width: 78%; display: flex; flex-direction: column; gap: 8px; background: #0A1420; color: #FFFFFF; border-radius: 18px 18px 4px 18px; padding: 10px">
+<div style="height: 110px; border-radius: 10px; background: #1E3B57; display: flex; align-items: center; justify-content: center">
+<svg aria-hidden="true" width="40" height="40" viewBox="0 0 40 40" fill="none"><circle cx="20" cy="20" r="19" stroke="#FFFFFF" stroke-width="2"></circle><path d="M16 13l12 7-12 7z" fill="#FFFFFF"></path></svg>
+</div>
+<div style="font-size: 14px; padding: 0 4px 4px">My bandeja keeps dropping short. Clip from Tuesday, 0:18.</div>
+</div>
+<div style="align-self: flex-start; width: 86%; display: flex; flex-direction: column; gap: 8px; background: #FFFFFF; border: 1px solid #D3DBE3; border-radius: 18px 18px 18px 4px; padding: 10px">
+<div style="height: 110px; border-radius: 10px; background: #D7F23A; display: flex; align-items: center; justify-content: center">
+<svg aria-hidden="true" width="40" height="40" viewBox="0 0 40 40" fill="none"><circle cx="20" cy="20" r="19" stroke="#0A1420" stroke-width="2"></circle><path d="M16 13l12 7-12 7z" fill="#0A1420"></path></svg>
+</div>
+<div style="font-size: 14px; padding: 0 4px"><strong>Coach's breakdown, 3:40.</strong> You are meeting the ball behind your head. Turn and step back earlier so contact is out in front.</div>
+<div style="display: flex; flex-direction: column; gap: 6px; padding: 0 4px 4px">
+<div style="font-size: 13px; font-weight: 700; background: #E6ECF1; border-radius: 8px; padding: 8px 10px">Drill 1: shadow bandeja, 3 sets of 10</div>
+<div style="font-size: 13px; font-weight: 700; background: #E6ECF1; border-radius: 8px; padding: 8px 10px">Drill 2: lob and recover with a partner</div>
+</div>
+</div>
+</div>
+</div>
+
+<div style="flex: 1.2 1 420px; min-width: 0; display: flex; flex-direction: column">
+
+<div style="display: flex; gap: 18px; padding: 22px 0; border-top: 1px solid #D3DBE3">
+<svg aria-hidden="true" width="28" height="28" viewBox="0 0 28 28" fill="none" style="flex: 0 0 28px; margin-top: 2px"><circle cx="14" cy="9" r="5" stroke="#0B1B2B" stroke-width="2"></circle><path d="M4 25c1-6 5-9 10-9s9 3 10 9" stroke="#0B1B2B" stroke-width="2" stroke-linecap="round"></path></svg>
+<div style="display: flex; flex-direction: column; gap: 4px">
+<h3 style="margin: 0; font-family: 'Archivo', sans-serif; font-weight: 800; font-size: 21px">Real coaches</h3>
+<p style="margin: 0; color: #4A5A68">Every lesson is recorded by a human coach who has watched your clip and knows what you are working on.</p>
+</div>
+</div>
+
+<div style="display: flex; gap: 18px; padding: 22px 0; border-top: 1px solid #D3DBE3">
+<svg aria-hidden="true" width="28" height="28" viewBox="0 0 28 28" fill="none" style="flex: 0 0 28px; margin-top: 2px"><path d="M3 8a2 2 0 0 1 2-2h6l2 3h10a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" stroke="#0B1B2B" stroke-width="2" stroke-linejoin="round"></path></svg>
+<div style="display: flex; flex-direction: column; gap: 4px">
+<h3 style="margin: 0; font-family: 'Archivo', sans-serif; font-weight: 800; font-size: 21px">Everything in one place</h3>
+<p style="margin: 0; color: #4A5A68">Your videos, your coach's replies and your drills stay in one folder, so you can look back at every lesson.</p>
+</div>
+</div>
+
+<div style="display: flex; gap: 18px; padding: 22px 0; border-top: 1px solid #D3DBE3">
+<svg aria-hidden="true" width="28" height="28" viewBox="0 0 28 28" fill="none" style="flex: 0 0 28px; margin-top: 2px"><circle cx="14" cy="14" r="11" stroke="#0B1B2B" stroke-width="2"></circle><path d="M14 7v7l5 3" stroke="#0B1B2B" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+<div style="display: flex; flex-direction: column; gap: 4px">
+<h3 style="margin: 0; font-family: 'Archivo', sans-serif; font-weight: 800; font-size: 21px">On your schedule</h3>
+<p style="margin: 0; color: #4A5A68">No lesson slot to book. Send a clip after your match and read the feedback before your next one.</p>
+</div>
+</div>
+
+<div style="display: flex; gap: 18px; padding: 22px 0; border-top: 1px solid #D3DBE3; border-bottom: 1px solid #D3DBE3">
+<svg aria-hidden="true" width="28" height="28" viewBox="0 0 28 28" fill="none" style="flex: 0 0 28px; margin-top: 2px"><rect x="3" y="6" width="22" height="16" rx="3" stroke="#0B1B2B" stroke-width="2"></rect><path d="M3 12h22" stroke="#0B1B2B" stroke-width="2"></path></svg>
+<div style="display: flex; flex-direction: column; gap: 4px">
+<h3 style="margin: 0; font-family: 'Archivo', sans-serif; font-weight: 800; font-size: 21px">One lesson or a monthly plan</h3>
+<p style="margin: 0; color: #4A5A68">Coaches set their own prices. Try a single lesson, or subscribe monthly for regular feedback from the same coach.</p>
+</div>
+</div>
+
+</div>
+</div>
+</section>
+
+<section style="background: #D7F23A; color: #0A1420">
+<div style="max-width: 1160px; margin: 0 auto; padding: 72px 24px; display: flex; flex-direction: column; gap: 32px">
+<div style="display: flex; flex-wrap: wrap; gap: 32px 72px">
+<div style="display: flex; flex-direction: column">
+<div style="font-family: 'Archivo', sans-serif; font-weight: 900; font-size: clamp(44px, 6vw, 80px); line-height: 1; letter-spacing: -0.03em">1,000,000</div>
+<div style="font-weight: 700">padel players in Britain</div>
+</div>
+<div style="display: flex; flex-direction: column">
+<div style="font-family: 'Archivo', sans-serif; font-weight: 900; font-size: clamp(44px, 6vw, 80px); line-height: 1; letter-spacing: -0.03em">1,825</div>
+<div style="font-weight: 700">courts</div>
+</div>
+<div style="display: flex; flex-direction: column">
+<div style="font-family: 'Archivo', sans-serif; font-weight: 900; font-size: clamp(44px, 6vw, 80px); line-height: 1; letter-spacing: -0.03em">551</div>
+<div style="font-weight: 700">venues</div>
+</div>
+</div>
+<div style="display: flex; flex-wrap: wrap; justify-content: space-between; gap: 12px 32px">
+<div style="font-family: 'Archivo', sans-serif; font-weight: 800; font-size: clamp(22px, 2.4vw, 30px)">Wherever you play, your coach is a video away.</div>
+<div style="font-size: 14px; font-weight: 500">Source: LTA, May 2026</div>
+</div>
+</div>
+</section>
+
+<section id="coaches">
+<div style="max-width: 1160px; margin: 0 auto; padding: 96px 24px; display: flex; flex-wrap: wrap; gap: 56px">
+<div style="flex: 1 1 400px; min-width: 0; display: flex; flex-direction: column; gap: 20px">
+<div style="font-size: 14px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: #A9B8C6">For coaches</div>
+<h2 style="margin: 0; font-family: 'Archivo', sans-serif; font-weight: 800; font-size: clamp(32px, 4vw, 52px); line-height: 1.05; letter-spacing: -0.02em">Coach more players without more hours on court.</h2>
+<p style="margin: 0; color: #D5DEE6; max-width: 480px">Reply to student videos when it suits you, from anywhere. Padelent brings you players who are looking for a coach and handles the payments.</p>
+<a href="#join" style="align-self: flex-start; background: #D7F23A; color: #0A1420; text-decoration: none; font-weight: 700; padding: 0 28px; min-height: 56px; border-radius: 8px; display: flex; align-items: center">Start coaching</a>
+</div>
+<div style="flex: 1 1 400px; min-width: 0; display: flex; flex-wrap: wrap; gap: 16px">
+
+<div style="flex: 1 1 220px; min-width: 0; background: rgba(255,255,255,0.07); border: 1px solid rgba(255,255,255,0.2); border-radius: 16px; padding: 24px; display: flex; flex-direction: column; gap: 8px">
+<h3 style="margin: 0; font-family: 'Archivo', sans-serif; font-weight: 800; font-size: 20px">Free to join</h3>
+<p style="margin: 0; color: #D5DEE6; font-size: 16px">No monthly fee. We only take a small share of the lessons booked through Padelent.</p>
+</div>
+
+<div style="flex: 1 1 220px; min-width: 0; background: rgba(255,255,255,0.07); border: 1px solid rgba(255,255,255,0.2); border-radius: 16px; padding: 24px; display: flex; flex-direction: column; gap: 8px">
+<h3 style="margin: 0; font-family: 'Archivo', sans-serif; font-weight: 800; font-size: 20px">Your prices</h3>
+<p style="margin: 0; color: #D5DEE6; font-size: 16px">Set what you charge for a single lesson and for a monthly plan, and change it whenever you like.</p>
+</div>
+
+<div style="flex: 1 1 220px; min-width: 0; background: rgba(255,255,255,0.07); border: 1px solid rgba(255,255,255,0.2); border-radius: 16px; padding: 24px; display: flex; flex-direction: column; gap: 8px">
+<h3 style="margin: 0; font-family: 'Archivo', sans-serif; font-weight: 800; font-size: 20px">New students</h3>
+<p style="margin: 0; color: #D5DEE6; font-size: 16px">Players find you through your profile, your reviews and the shots you specialise in.</p>
+</div>
+
+<div style="flex: 1 1 220px; min-width: 0; background: rgba(255,255,255,0.07); border: 1px solid rgba(255,255,255,0.2); border-radius: 16px; padding: 24px; display: flex; flex-direction: column; gap: 8px">
+<h3 style="margin: 0; font-family: 'Archivo', sans-serif; font-weight: 800; font-size: 20px">One inbox</h3>
+<p style="margin: 0; color: #D5DEE6; font-size: 16px">Every student has a folder with their videos, your replies and their history, in place of scattered chats.</p>
+</div>
+
+</div>
+</div>
+</section>
+
+<section id="faq" style="background: #F4F7FA; color: #0B1B2B">
+<div style="max-width: 860px; margin: 0 auto; padding: 96px 24px; display: flex; flex-direction: column; gap: 32px">
+<h2 style="margin: 0; font-family: 'Archivo', sans-serif; font-weight: 800; font-size: clamp(32px, 4vw, 52px); line-height: 1.05; letter-spacing: -0.02em">Questions</h2>
+<div style="display: flex; flex-direction: column">
+
+<div style="padding: 22px 0; border-top: 1px solid #C3CED8; display: flex; flex-direction: column; gap: 6px">
+<h3 style="margin: 0; font-family: 'Archivo', sans-serif; font-weight: 800; font-size: 21px">What do I need to film?</h3>
+<p style="margin: 0; color: #4A5A68">A phone. Lean it against the back glass or clip it to the fence, and film a few points or a few repeats of one shot.</p>
+</div>
+
+<div style="padding: 22px 0; border-top: 1px solid #C3CED8; display: flex; flex-direction: column; gap: 6px">
+<h3 style="margin: 0; font-family: 'Archivo', sans-serif; font-weight: 800; font-size: 21px">How much does a lesson cost?</h3>
+<p style="margin: 0; color: #4A5A68">Each coach sets their own price, shown on their profile before you pay.</p>
+</div>
+
+<div style="padding: 22px 0; border-top: 1px solid #C3CED8; display: flex; flex-direction: column; gap: 6px">
+<h3 style="margin: 0; font-family: 'Archivo', sans-serif; font-weight: 800; font-size: 21px">Do I need to be a good player?</h3>
+<p style="margin: 0; color: #4A5A68">No. Tell your coach your level when you send your first video and they will pitch the feedback to suit you.</p>
+</div>
+
+<div style="padding: 22px 0; border-top: 1px solid #C3CED8; border-bottom: 1px solid #C3CED8; display: flex; flex-direction: column; gap: 6px">
+<h3 style="margin: 0; font-family: 'Archivo', sans-serif; font-weight: 800; font-size: 21px">When does it launch?</h3>
+<p style="margin: 0; color: #4A5A68">We are signing up our first coaches now. Leave your email below and you will be first to hear when we open.</p>
+</div>
+
+</div>
+</div>
+</section>
+
+<section id="join">
+<div style="max-width: 860px; margin: 0 auto; padding: 96px 24px; display: flex; flex-direction: column; align-items: center; gap: 24px; text-align: center">
+<h2 style="margin: 0; font-family: 'Archivo', sans-serif; font-weight: 800; font-size: clamp(36px, 5vw, 64px); line-height: 1.02; letter-spacing: -0.02em">Be first on <span style="color: #D7F23A">court</span></h2>
+<p style="margin: 0; color: #D5DEE6; max-width: 520px">Leave your email and we will tell you the day coaches go live. Coaches, tick the box and we will send you the application.</p>
+<div style="width: 100%; max-width: 520px; display: flex; flex-direction: column; gap: 12px; text-align: left">
+<label for="join-email-b" style="font-size: 14px; font-weight: 700">Email address</label>
+<div style="display: flex; flex-wrap: wrap; gap: 10px">
+<input id="join-email-b" type="email" placeholder="you@example.com" style="flex: 1 1 240px; min-width: 0; height: 56px; padding: 0 18px; border-radius: 8px; border: 1px solid #7C8FA3; background: #14212F; color: #FFFFFF; font-family: inherit; font-size: 17px">
+<button type="button" style="flex: 0 0 auto; height: 56px; padding: 0 28px; border: 0; border-radius: 8px; background: #D7F23A; color: #0A1420; font-family: inherit; font-size: 17px; font-weight: 700; cursor: pointer">Get started</button>
+</div>
+<div style="display: flex; align-items: center; gap: 10px; min-height: 44px">
+<input id="join-coach-b" type="checkbox" style="width: 22px; height: 22px; margin: 0">
+<label for="join-coach-b" style="color: #D5DEE6">I am a coach</label>
+</div>
+<p id="join-msg" role="status" style="margin: 0; min-height: 26px; font-weight: 700; color: #D7F23A"></p>
+<p style="margin: 0; font-size: 14px; color: #A9B8C6">We will only email you about Padelent. Unsubscribe any time. <a href="/privacy.html" style="color: #A9B8C6">Privacy</a></p>
+</div></div>
+</section>
+
+<footer style="border-top: 1px solid rgba(255,255,255,0.2)">
+<div style="max-width: 1160px; margin: 0 auto; padding: 28px 24px; display: flex; flex-wrap: wrap; justify-content: space-between; gap: 12px 32px; font-size: 14px; color: #A9B8C6">
+<div>© 2026 Padelent. Padel plus talent.</div>
+<div style="display: flex; flex-wrap: wrap; gap: 8px 24px">
+<a href="https://www.instagram.com/padelent/" style="color: #A9B8C6; min-height: 44px; display: flex; align-items: center; gap: 8px"><svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="5"></rect><circle cx="12" cy="12" r="4"></circle><circle cx="17.5" cy="6.5" r="1.2" fill="currentColor" stroke="none"></circle></svg>Instagram</a>
+<a href="/privacy.html" style="color: #A9B8C6; min-height: 44px; display: flex; align-items: center">Privacy</a>
+<a href="mailto:info@padelent.com" style="color: #A9B8C6; min-height: 44px; display: flex; align-items: center">info@padelent.com</a>
+</div>
+</div>
+</footer>
+
+</div>
+
+<dialog class="signup" id="signup" aria-labelledby="signup-title">
+<form id="signup-form" novalidate>
+<button type="button" class="close" aria-label="Close" data-close>&times;</button>
+<p style="align-self: flex-start; margin: 0; font-family: 'Archivo', sans-serif; font-weight: 800; font-size: 13px; letter-spacing: 0.14em; text-transform: uppercase; color: #0A1420; background: #D7F23A; padding: 6px 10px; border-radius: 6px">Coming soon</p>
+<h2 id="signup-title">Padelent is coming soon</h2>
+<p>We are getting ready to launch. Leave your email and we will let you know as soon as you can start.</p>
+<label class="field" for="signup-email">Email address
+<input id="signup-email" name="email" type="email" autocomplete="email" placeholder="you@example.com" required>
+</label>
+<fieldset>
+<legend>I am a</legend>
+<label class="choice"><input type="radio" name="role" value="player" id="signup-player" checked><span>Player</span></label>
+<label class="choice"><input type="radio" name="role" value="coach" id="signup-coach"><span>Coach</span></label>
+</fieldset>
+<button type="submit">Sign me up</button>
+<p class="msg" id="signup-msg" role="status"></p>
+<p class="note">We will only email you about Padelent. Unsubscribe any time. <a href="/privacy.html">Privacy</a></p>
+</form>
+</dialog>
+
+<script>
+(function () {
+  var SUPABASE_URL = "__SUPABASE_URL__";
+  var SUPABASE_KEY = "__SUPABASE_ANON_KEY__";
+  var CONTACT = "info@padelent.com";
+  var EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+  function save(email, role, source) {
+    if (SUPABASE_URL.indexOf("__") === 0) return Promise.reject(new Error("not-configured"));
+    return fetch(SUPABASE_URL + "/rest/v1/signups", {
+      method: "POST",
+      headers: {
+        "apikey": SUPABASE_KEY,
+        "Authorization": "Bearer " + SUPABASE_KEY,
+        "Content-Type": "application/json",
+        "Prefer": "return=minimal"
+      },
+      body: JSON.stringify({ email: email, role: role, source: source })
+    }).then(function (r) {
+      if (r.status === 409) return "exists";
+      if (!r.ok) throw new Error("failed " + r.status);
+      return "ok";
+    });
+  }
+
+  function submit(emailInput, role, source, msgEl, button) {
+    var email = (emailInput.value || "").trim().toLowerCase();
+    if (!EMAIL_RE.test(email)) {
+      msgEl.textContent = "Please enter a valid email address.";
+      emailInput.focus();
+      return;
+    }
+    button.disabled = true;
+    msgEl.textContent = "Signing you up...";
+    save(email, role, source).then(function (result) {
+      msgEl.textContent = result === "exists"
+        ? "You are already on the list. We will be in touch."
+        : (role === "coach" ? "You are on the list. We will email you the coach details soon." : "You are on the list. We will be in touch soon.");
+      emailInput.value = "";
+    }).catch(function () {
+      msgEl.textContent = "Something went wrong. Please try again, or email " + CONTACT + ".";
+    }).then(function () { button.disabled = false; });
+  }
+
+  var dialog = document.getElementById("signup");
+  var form = document.getElementById("signup-form");
+  var dEmail = document.getElementById("signup-email");
+  var dMsg = document.getElementById("signup-msg");
+
+  function open(role) {
+    document.getElementById(role === "coach" ? "signup-coach" : "signup-player").checked = true;
+    dMsg.textContent = "";
+    if (typeof dialog.showModal === "function") { dialog.showModal(); } else { location.hash = "join"; return; }
+    dEmail.focus();
+  }
+
+  document.querySelectorAll('a[href="#join"]').forEach(function (a) {
+    a.addEventListener("click", function (e) {
+      e.preventDefault();
+      open(/coach/i.test(a.textContent) ? "coach" : "player");
+    });
+  });
+  dialog.querySelector("[data-close]").addEventListener("click", function () { dialog.close(); });
+  dialog.addEventListener("click", function (e) { if (e.target === dialog) dialog.close(); });
+  form.addEventListener("submit", function (e) {
+    e.preventDefault();
+    var role = form.querySelector('input[name="role"]:checked').value;
+    submit(dEmail, role, "popup", dMsg, form.querySelector('button[type="submit"]'));
+  });
+
+  var pEmail = document.getElementById("join-email-b");
+  var pCoach = document.getElementById("join-coach-b");
+  var pMsg = document.getElementById("join-msg");
+  var pButton = document.querySelector("#join button");
+  pButton.addEventListener("click", function () {
+    submit(pEmail, pCoach.checked ? "coach" : "player", "page", pMsg, pButton);
+  });
+  pEmail.addEventListener("keydown", function (e) { if (e.key === "Enter") pButton.click(); });
+})();
+</script>
+</body>
+</html>
