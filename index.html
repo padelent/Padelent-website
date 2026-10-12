@@ -343,21 +343,23 @@ For coaches
 
 <script>
 (function () {
-  var SUPABASE_URL = "__SUPABASE_URL__";
-  var SUPABASE_KEY = "__SUPABASE_ANON_KEY__";
+  var SUPABASE_URL = "https://bjqffcfbnfyoumklewbd.supabase.co";
+  var SUPABASE_KEY = "sb_publishable_6DL2EwfA35xaWfD88PU5Lw_75_2zI72";
   var CONTACT = "info@padelent.com";
   var EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+  function headers() {
+    var h = { "apikey": SUPABASE_KEY, "Content-Type": "application/json", "Prefer": "return=minimal" };
+    // Legacy anon keys are JWTs and go in Authorization too; new publishable keys (sb_...) must not.
+    if (SUPABASE_KEY.indexOf("sb_") !== 0) h["Authorization"] = "Bearer " + SUPABASE_KEY;
+    return h;
+  }
 
   function save(email, role, source) {
     if (SUPABASE_URL.indexOf("__") === 0) return Promise.reject(new Error("not-configured"));
     return fetch(SUPABASE_URL + "/rest/v1/signups", {
       method: "POST",
-      headers: {
-        "apikey": SUPABASE_KEY,
-        "Authorization": "Bearer " + SUPABASE_KEY,
-        "Content-Type": "application/json",
-        "Prefer": "return=minimal"
-      },
+      headers: headers(),
       body: JSON.stringify({ email: email, role: role, source: source })
     }).then(function (r) {
       if (r.status === 409) return "exists";
