@@ -16,7 +16,8 @@
   --tabbar: 0px;
 }
 * { box-sizing: border-box; }
-html { -webkit-text-size-adjust: 100%; }
+html { -webkit-text-size-adjust: 100%; overflow-x: hidden; overflow-x: clip; }
+body { overflow-x: hidden; overflow-x: clip; }
 body { margin: 0; background: var(--navy); color: var(--text); font-family: var(--body); font-size: 16px; line-height: 1.5; min-height: 100vh; }
 a { color: var(--acc); }
 img, video { max-width: 100%; display: block; }
@@ -52,7 +53,9 @@ main.narrow { max-width: 760px; }
 @media (max-width: 760px) {
   :root { --tabbar: 64px; }
   .nav { display: none; }
-  .top-in { padding: 8px 16px; }
+  .top-in { padding: 8px 16px; gap: 10px; }
+  .logo { font-size: 20px; }
+  .top .btn.sm { padding: 0 14px; min-height: 40px; }
   main.page { padding: 20px 16px calc(40px + var(--tabbar) + env(safe-area-inset-bottom)); gap: 28px; }
   .tabbar { display: flex; position: fixed; left: 0; right: 0; bottom: 0; z-index: 30; background: rgba(10,20,32,.97); border-top: 1px solid var(--line); padding-bottom: env(safe-area-inset-bottom); }
   .tabbar a { flex: 1; height: 64px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; color: var(--muted); text-decoration: none; font-size: 12px; font-weight: 700; position: relative; }
@@ -84,6 +87,7 @@ textarea.in { min-height: 110px; resize: vertical; line-height: 1.5; }
 .levels { display: grid; grid-template-columns: repeat(13, 1fr); gap: 6px; }
 .levels .chip { padding: 0; justify-content: center; border-radius: 10px; min-height: 46px; }
 @media (max-width: 760px) { .levels { grid-template-columns: repeat(7, 1fr); } }
+@media (max-width: 760px) { .chips.scroll { margin: 0 -16px; padding: 0 16px; } }
 .form { display: flex; flex-direction: column; gap: 22px; }
 .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
 @media (max-width: 600px) { .row2 { grid-template-columns: 1fr; } }
@@ -152,7 +156,8 @@ textarea.in { min-height: 110px; resize: vertical; line-height: 1.5; }
 
 /* ---------- Lessons ---------- */
 .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; }
-@media (max-width: 760px) { .stats { grid-template-columns: 1fr 1fr; } }
+@media (max-width: 760px) { .stats { grid-template-columns: 1fr 1fr !important; } }
+@media (max-width: 380px) { .top .pill-tag { display: none; } .top .btn.sm { padding: 0 11px; font-size: 14px; } .logo svg { width: 24px; height: 24px; } }
 .stat { background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 16px 18px; }
 .stat .v { font-family: var(--head); font-weight: 800; font-size: 28px; }
 .tabs { display: flex; gap: 24px; border-bottom: 1px solid var(--line); overflow-x: auto; scrollbar-width: none; }
