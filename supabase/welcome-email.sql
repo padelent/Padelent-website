@@ -40,7 +40,7 @@ begin
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#0A1420;"><tr><td align="center" style="padding:28px 12px;">
 <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;font-family:Helvetica,Arial,sans-serif;color:#FFFFFF;">
 <tr><td style="padding:0 8px 22px;">
-  <img src="https://padelent.com/app/icon-180.png" width="34" height="34" alt="" style="vertical-align:middle;border:0;border-radius:8px;"> <span style="font-size:26px;font-weight:800;letter-spacing:-0.5px;color:#FFFFFF;vertical-align:middle;">Padelent</span>
+  <img src="cid:padelent-logo" width="34" height="34" alt="" style="vertical-align:middle;border:0;border-radius:8px;"> <span style="font-size:26px;font-weight:800;letter-spacing:-0.5px;color:#FFFFFF;vertical-align:middle;">Padelent</span>
   <span style="float:right;font-size:11px;font-weight:700;letter-spacing:2px;color:#D7F23A;line-height:32px;">PADEL PLUS TALENT</span>
 </td></tr>
 <tr><td style="background:#1B2530;border-radius:18px;padding:30px 28px;">
@@ -51,7 +51,7 @@ begin
 <tr><td style="padding:30px 8px 10px;">
   <h2 style="margin:0 0 6px;font-size:21px;color:#FFFFFF;">Put Padelent on your phone</h2>
   <p style="margin:0 0 16px;font-size:15px;line-height:1.5;color:#A9B8C6;">Takes two minutes. Follow the steps below and it opens like any other app.</p>
-  <img src="https://padelent.com/app/install-guide.jpg" width="584" alt="How to add Padelent to your iPhone home screen: open padelent.com/app in Safari, tap the three dots, Share, View More, Add to Home Screen, then Add." style="display:block;width:100%;max-width:584px;height:auto;border:0;border-radius:14px;">
+  <img src="cid:install-guide" width="584" alt="How to add Padelent to your iPhone home screen: open padelent.com/app in Safari, tap the three dots, Share, View More, Add to Home Screen, then Add." style="display:block;width:100%;max-width:584px;height:auto;border:0;border-radius:14px;">
 </td></tr>
 <tr><td style="padding:22px 8px 0;font-size:13px;line-height:1.5;color:#A9B8C6;text-align:center;">
   Questions? Just reply to this email or write to <a href="mailto:info@padelent.com" style="color:#D7F23A;">info@padelent.com</a>.<br>
@@ -74,7 +74,14 @@ begin
       'reply_to', 'info@padelent.com',
       'subject', case when v_is_coach then 'Welcome to Padelent, coach' else 'Welcome to Padelent' end,
       'html', v_html,
-      'text', v_text)
+      'text', v_text,
+      -- The pictures travel inside the email, so they show even when the
+      -- email app blocks images from websites.
+      'attachments', jsonb_build_array(
+        jsonb_build_object('path', 'https://padelent.com/app/install-guide.jpg',
+                           'filename', 'padelent-install-guide.jpg', 'content_id', 'install-guide'),
+        jsonb_build_object('path', 'https://padelent.com/app/icon-180.png',
+                           'filename', 'padelent-logo.png', 'content_id', 'padelent-logo')))
   );
   return new;
 exception when others then
