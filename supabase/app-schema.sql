@@ -64,6 +64,9 @@ create table if not exists public.lessons (
   opened_at timestamptz,
   done_at timestamptz
 );
+-- After a lesson is done, player and coach can keep chatting until the coach closes it.
+alter table public.lessons add column if not exists closed_at timestamptz;
+alter table public.lessons add column if not exists needs_coach boolean not null default false;
 create index if not exists lessons_coach_idx on public.lessons (coach_id, created_at desc);
 create index if not exists lessons_player_idx on public.lessons (player_id, created_at desc);
 
@@ -268,6 +271,9 @@ begin
     if split_part(v, '/', 1) <> v_uid::text then raise exception 'Video upload not recognised.'; end if;
   end loop;
 
+  update public.lessons set closed_at = now(), needs_coach = false
+  where player_id = v_uid and coach_id = p_coach and status = 'done' and closed_at is null;
+
   insert into public.lessons (player_id, coach_id, topic, status, price_pence, platform_fee_pence)
   values (v_uid, p_coach, left(trim(p_topic), 140),
           case when public.payments_required() then 'pending_payment' else 'new' end,
@@ -284,6 +290,17 @@ language plpgsql security definer set search_path = public as $$
 begin
   update public.lessons set status = 'awaiting', opened_at = now()
   where id = p_lesson and coach_id = auth.uid() and status = 'new';
+  update public.lessons set needs_coach = false
+  where id = p_lesson and coach_id = auth.uid() and needs_coach;
+end $$;
+
+-- Coach: finish the follow-up chat on a done lesson.
+create or replace function public.close_lesson(p_lesson uuid) returns void
+language plpgsql security definer set search_path = public as $$
+begin
+  update public.lessons set closed_at = now(), needs_coach = false
+  where id = p_lesson and coach_id = auth.uid() and status = 'done' and closed_at is null;
+  if not found then raise exception 'Only a finished lesson can be closed.'; end if;
 end $$;
 
 create or replace function public.send_message(p_lesson uuid, p_body text, p_videos text[], p_mark_done boolean)
@@ -301,14 +318,19 @@ begin
   foreach v in array coalesce(p_videos, '{}') loop
     if split_part(v, '/', 1) <> v_uid::text then raise exception 'Video upload not recognised.'; end if;
   end loop;
-  if v_uid = l.player_id and l.status = 'done' then
-    raise exception 'This lesson is finished. Book a new lesson to send more videos.';
+  if l.closed_at is not null then
+    raise exception 'This lesson is closed. Book a new lesson to keep working together.';
   end if;
 
   insert into public.messages (lesson_id, sender_id, body, videos)
   values (p_lesson, v_uid, left(coalesce(p_body, ''), 5000), coalesce(p_videos, '{}'));
 
+  if v_uid = l.player_id and l.status = 'done' then
+    update public.lessons set needs_coach = true where id = p_lesson;
+  end if;
+
   if v_uid = l.coach_id then
+    update public.lessons set needs_coach = false where id = p_lesson and needs_coach;
     if p_mark_done then
       update public.lessons set status = 'done', done_at = now(), opened_at = coalesce(opened_at, now()) where id = p_lesson;
     elsif l.status = 'new' then
@@ -342,7 +364,7 @@ end $$;
 create or replace function public.coach_feed() returns json
 language sql stable security definer set search_path = public as $$
   select coalesce(json_agg(x order by x.created_at desc), '[]'::json) from (
-    select l.id, l.player_id, l.topic, l.status, l.created_at, l.price_pence, l.platform_fee_pence,
+    select l.id, l.player_id, l.topic, l.status, l.created_at, l.price_pence, l.platform_fee_pence, l.closed_at, l.needs_coach,
            p.full_name as player_name, pl.level, pl.side, pl.hand,
            (select count(*) from public.lessons l2 where l2.player_id = l.player_id and l2.coach_id = l.coach_id
               and l2.status <> 'pending_payment' and l2.created_at <= l.created_at) as nth,
@@ -363,6 +385,7 @@ language sql stable security definer set search_path = public as $$
            count(*) as lesson_count,
            max(l.created_at) as last_at,
            (array_agg(l.status order by l.created_at desc))[1] as last_status,
+           (array_agg(l.closed_at order by l.created_at desc))[1] as last_closed_at,
            (array_agg(l.topic order by l.created_at desc))[1] as last_topic,
            count(*) filter (where l.status = 'done' and not exists (select 1 from public.reviews r where r.lesson_id = l.id)) as to_review
     from public.lessons l
@@ -405,7 +428,7 @@ begin
     'other', v_other,
     'lessons', coalesce((
       select json_agg(json_build_object(
-        'id', l.id, 'topic', l.topic, 'status', l.status, 'price_pence', l.price_pence,
+        'id', l.id, 'topic', l.topic, 'status', l.status, 'price_pence', l.price_pence, 'closed_at', l.closed_at, 'needs_coach', l.needs_coach,
         'created_at', l.created_at, 'done_at', l.done_at,
         'review', (select json_build_object('rating', r.rating, 'comment', r.comment) from public.reviews r where r.lesson_id = l.id),
         'messages', coalesce((select json_agg(json_build_object(
@@ -446,12 +469,12 @@ end $$;
 
 -- Functions are for logged-in users only (the coach list view above is public).
 revoke execute on function public.my_profile(), public.save_my_profile(jsonb),
-  public.book_lesson(uuid, text, text, text[]), public.open_lesson(uuid),
+  public.book_lesson(uuid, text, text, text[]), public.open_lesson(uuid), public.close_lesson(uuid),
   public.send_message(uuid, text, text[], boolean), public.post_review(uuid, int, text[], text),
   public.coach_feed(), public.player_coaches(), public.get_space(uuid),
   public.admin_overview(), public.admin_set_approved(uuid, boolean) from public, anon;
 grant execute on function public.my_profile(), public.save_my_profile(jsonb),
-  public.book_lesson(uuid, text, text, text[]), public.open_lesson(uuid),
+  public.book_lesson(uuid, text, text, text[]), public.open_lesson(uuid), public.close_lesson(uuid),
   public.send_message(uuid, text, text[], boolean), public.post_review(uuid, int, text[], text),
   public.coach_feed(), public.player_coaches(), public.get_space(uuid),
   public.admin_overview(), public.admin_set_approved(uuid, boolean) to authenticated;

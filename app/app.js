@@ -202,7 +202,7 @@
   }
   function refreshNewCount() {
     if (!me || me.role !== 'coach') return Promise.resolve();
-    return rpc('coach_feed').then(function (f) { state.newCount = (f || []).filter(function (l) { return l.status === 'new'; }).length; updateBadges(); }).catch(function () {});
+    return rpc('coach_feed').then(function (f) { state.newCount = (f || []).filter(function (l) { return l.status === 'new' || l.needs_coach; }).length; updateBadges(); }).catch(function () {});
   }
   function updateBadges() {
     $$('[data-badge]').forEach(function (b) { b.textContent = state.newCount; b.style.display = state.newCount ? '' : 'none'; });
@@ -275,13 +275,16 @@
       '<div class="meta">' + ratingHtml(c) + '<span>' + money(c.price_pence) + '<span class="muted"> / lesson</span></span></div>' +
       (c.lessons_done ? '<div class="muted small">' + c.lessons_done + ' lesson' + (c.lessons_done === 1 ? '' : 's') + ' given</div>' : '') + '</a>';
   }
-  // Blue = still open (the coach has not finished it). Green = done.
-  function statusPill(s, forRole) {
-    var open = s !== 'done';
-    var label = forRole === 'coach'
-      ? ({ 'new': 'New', awaiting: 'Awaiting your reply', done: 'Done' }[s] || s)
-      : (open ? 'Open' : 'Done');
-    return '<span class="st ' + (open ? 'open' : 'done') + (s === 'new' && forRole === 'coach' ? ' fresh' : '') + '"><i></i>' + label + '</span>';
+  // Blue = still open or needs the coach. Green = done (follow-up chat still open). Grey = closed.
+  function statusPill(s, forRole, l) {
+    l = l || {};
+    var cls, label;
+    if (s === 'done' && l.closed_at) { cls = 'closed'; label = 'Closed'; }
+    else if (s === 'done' && forRole === 'coach' && l.needs_coach) { cls = 'open fresh'; label = 'New message'; }
+    else if (s === 'done') { cls = 'done'; label = 'Done'; }
+    else if (forRole === 'coach') { cls = 'open' + (s === 'new' ? ' fresh' : ''); label = s === 'new' ? 'New' : 'Awaiting your reply'; }
+    else { cls = 'open'; label = 'Open'; }
+    return '<span class="st ' + cls + '"><i></i>' + label + '</span>';
   }
   function fileRow(f, i) {
     return '<div class="file" data-i="' + i + '"><span class="nm">' + esc(f.name || 'Video') + '</span><span class="muted small">' +
@@ -705,12 +708,14 @@
     rpc('coach_feed').then(function (feed) {
       if (t !== navToken) return;
       feed = feed || [];
-      state.newCount = feed.filter(function (l) { return l.status === 'new'; }).length;
+      feed.sort(function (a, b) { return (b.needs_coach ? 1 : 0) - (a.needs_coach ? 1 : 0); });
+      state.newCount = feed.filter(function (l) { return l.status === 'new' || l.needs_coach; }).length;
       var now = new Date(), m0 = new Date(now.getFullYear(), now.getMonth(), 1);
       var doneMonth = feed.filter(function (l) { return l.status === 'done' && new Date(l.created_at) >= m0; });
       var earned = doneMonth.reduce(function (s, l) { return s + l.price_pence - l.platform_fee_pence; }, 0);
       var n = { all: feed.length, 'new': 0, awaiting: 0, done: 0 };
-      feed.forEach(function (l) { n[l.status] = (n[l.status] || 0) + 1; });
+      function tabOf(l) { return l.needs_coach ? 'new' : l.status; }
+      feed.forEach(function (l) { n[tabOf(l)] = (n[tabOf(l)] || 0) + 1; });
       var tab = store.get('padelent.feedtab') || 'all';
       var c = me.coach || {};
       render(shell('lessons',
@@ -724,15 +729,15 @@
           return '<button role="tab" data-tab="' + x[0] + '" class="' + (x[0] === tab ? 'on' : '') + '">' + x[1] + '<span class="c">' + (n[x[0]] || 0) + '</span></button>'; }).join('') + '</div>' +
         '<div id="feed"></div>'));
       function draw() {
-        var list = feed.filter(function (l) { return tab === 'all' || l.status === tab; });
+        var list = feed.filter(function (l) { return tab === 'all' || tabOf(l) === tab; });
         $('#feed').innerHTML = list.length ? '<div class="list">' + list.map(function (l) {
           var game = [l.level != null ? 'Level ' + Number(l.level).toFixed(1) : '', SIDE[l.side] ? SIDE[l.side].replace(/ \(.*\)/, '') : '', HAND[l.hand] || ''].filter(Boolean).join(' · ');
-          return '<a class="lrow' + (l.status === 'new' ? ' new' : '') + '" href="#/space/' + l.player_id + '">' +
+          return '<a class="lrow' + (l.status === 'new' || l.needs_coach ? ' new' : '') + '" href="#/space/' + l.player_id + '">' +
             '<span class="avatar">' + esc(initials(l.player_name)) + '</span>' +
             '<span class="main"><span style="display:flex;gap:10px;align-items:baseline;flex-wrap:wrap"><b style="font-size:17px">' + esc(l.player_name) + '</b><span class="muted small">' + esc(game) + '</span></span>' +
             '<span class="t" style="' + (l.status === 'new' ? 'font-weight:700' : '') + '">' + esc(l.topic) + '</span>' +
             '<span class="muted small">Lesson ' + l.nth + ' with you · ' + l.video_count + ' video' + (l.video_count == 1 ? '' : 's') + '</span></span>' +
-            '<span class="side"><span class="muted small">' + when(l.created_at) + '</span>' + statusPill(l.status, 'coach') + '</span></a>';
+            '<span class="side"><span class="muted small">' + when(l.created_at) + '</span>' + statusPill(l.status, 'coach', l) + '</span></a>';
         }).join('') + '</div>'
           : '<div class="panel empty"><h3>' + (feed.length ? 'Nothing here' : 'No lessons yet') + '</h3><p class="muted">' +
             (feed.length ? 'Try another tab.' : (c.approved ? 'When a player books you, their lesson appears here.' : 'Once your profile is approved, players can find and book you.')) + '</p></div>';
@@ -767,7 +772,7 @@
             '<span class="avatar">' + (r.photo_url ? '<img src="' + esc(r.photo_url) + '" alt="">' : esc(initials(r.coach_name))) + '</span>' +
             '<span class="main"><b style="font-size:17px">' + esc(r.coach_name) + '</b><span class="t">' + esc(r.last_topic) + '</span>' +
             '<span class="muted small">' + r.lesson_count + ' lesson' + (r.lesson_count == 1 ? '' : 's') + ' · ' + when(r.last_at) + '</span></span>' +
-            '<span class="side">' + statusPill(r.last_status, 'player') + (r.to_review > 0 ? '<span class="small" style="color:var(--acc);font-weight:700">Leave a review</span>' : '') + '</span></a>';
+            '<span class="side">' + statusPill(r.last_status, 'player', { closed_at: r.last_closed_at }) + (r.to_review > 0 ? '<span class="small" style="color:var(--acc);font-weight:700">Leave a review</span>' : '') + '</span></a>';
         }).join('') + '</div>'
           : '<div class="panel empty"><h2>No lessons yet</h2><p class="muted">Pick a coach and send them a clip of your game.</p><a class="btn acc" href="#/coaches">Find a coach</a></div>')));
     }).catch(function (e) { if (t === navToken) failed('lessons', e); });
@@ -784,9 +789,9 @@
       if (!sp) { render(shell('lessons', '<div class="empty"><h2>Not found</h2><p class="muted">You do not have any lessons here.</p><a class="btn acc" href="#/lessons">My lessons</a></div>')); return; }
       var isCoach = sp.role === 'coach';
       var lessons = sp.lessons || [];
-      var opens = isCoach ? lessons.filter(function (l) { return l.status === 'new'; }) : [];
+      var opens = isCoach ? lessons.filter(function (l) { return l.status === 'new' || l.needs_coach; }) : [];
       if (opens.length) {
-        opens.forEach(function (l) { l.status = 'awaiting'; });
+        opens.forEach(function (l) { if (l.status === 'new') l.status = 'awaiting'; l.needs_coach = false; });
         Promise.all(opens.map(function (l) { return rpc('open_lesson', { p_lesson: l.id }); })).then(refreshNewCount).catch(function () {});
       }
       drawSpace(sp, other);
@@ -799,7 +804,9 @@
     var lessons = sp.lessons || [];
     var fn = firstName(o.full_name) || (isCoach ? 'your player' : 'your coach');
     var last = lessons[lessons.length - 1];
-    var open = last && last.status !== 'done' ? last : null;
+    var active = last && !last.closed_at ? last : null;           // lesson you can still write in
+    var open = active && active.status !== 'done' ? active : null;  // waiting for the coach's lesson reply
+    var followup = active && active.status === 'done' ? active : null;  // done, chat still open
     var myName = me.full_name;
 
     var aside = '';
@@ -821,7 +828,7 @@
       aside += '<div style="display:flex;flex-direction:column;gap:8px"><h3>All lessons with ' + esc(fn) + '</h3>' + lessons.slice().reverse().map(function (l) {
         var i = lessons.indexOf(l) + 1;
         return '<a href="#" data-jump="' + l.id + '" class="panel" style="padding:12px 14px;display:flex;flex-direction:column;gap:4px;text-decoration:none;color:#fff;' + (l === last ? 'border-color:var(--acc)' : '') + '">' +
-          '<span style="display:flex;justify-content:space-between;gap:8px;align-items:center"><b>Lesson ' + i + '</b>' + statusPill(l.status, sp.role) + '</span>' +
+          '<span style="display:flex;justify-content:space-between;gap:8px;align-items:center"><b>Lesson ' + i + '</b>' + statusPill(l.status, sp.role, l) + '</span>' +
           '<span class="small" style="color:#D5DEE6">' + esc(l.topic) + '</span><span class="muted small">' + shortDate(l.created_at) + '</span></a>';
       }).join('') + '</div>';
     }
@@ -829,11 +836,17 @@
     var thread = lessons.map(function (l, i) {
       var cur = l === last;
       var head = '<div class="divider' + (cur ? ' cur' : '') + '" id="l-' + l.id + '">Lesson ' + (i + 1) + ' · ' + esc(l.topic) + ' · ' + shortDate(l.created_at) + '</div>';
+      var shownFollow = false;
       var msgs = (l.messages || []).map(function (m) {
+        var sep = '';
+        if (!shownFollow && l.done_at && new Date(m.created_at) > new Date(l.done_at)) {
+          shownFollow = true;
+          sep = '<div class="divider" style="font-size:13px">Follow-up chat</div>';
+        }
         var mine = m.sender_id === me.id;
         var fromCoach = isCoach ? mine : !mine;
         var name = mine ? myName + ' (you)' : o.full_name;
-        return '<div class="msg' + (fromCoach ? ' coach' : '') + '"><span class="avatar' + (fromCoach ? ' acc' : '') + '">' + esc(initials(mine ? myName : o.full_name)) + '</span>' +
+        return sep + '<div class="msg' + (fromCoach ? ' coach' : '') + '"><span class="avatar' + (fromCoach ? ' acc' : '') + '">' + esc(initials(mine ? myName : o.full_name)) + '</span>' +
           '<div class="bub"><div class="who"><b>' + esc(name) + '</b><span class="muted small">' + when(m.created_at) + '</span></div>' +
           (m.body ? '<div class="body">' + esc(m.body) + '</div>' : '') + videoTags(m.videos) + '</div></div>';
       }).join('');
@@ -846,6 +859,7 @@
       if (!isCoach && l.status !== 'done') {
         after = '<div class="small muted" style="text-align:center">' + (l.status === 'new' ? esc(fn) + ' has your lesson and will reply in their own time.' : esc(fn) + ' is working on your lesson.') + '</div>';
       }
+      if (l.closed_at) after += '<div class="small muted" style="text-align:center">Lesson closed by ' + esc(isCoach ? 'you' : fn) + ' · ' + shortDate(l.closed_at) + '</div>';
       return head + msgs + after;
     }).join('');
 
@@ -860,8 +874,23 @@
         '<p class="err" id="e" hidden></p>' +
         '<div class="acts" style="justify-content:flex-end"><button type="submit" class="btn" data-done="0">Send, keep open</button><button type="submit" class="btn white" data-done="1">Send and mark done</button></div>' +
         '<p class="muted small">Tip: to draw on ' + esc(fn) + '’s clip, screen-record it on your phone while you talk and mark it up, then upload the recording.</p></form>';
+    } else if (isCoach && followup) {
+      composer = '<form class="panel composer" id="cf"><h3>Message ' + esc(fn) + '</h3>' +
+        '<p class="muted small">The lesson is done, but you can keep chatting about how ' + esc(fn) + ' is getting on. Close the lesson when you are finished.</p>' +
+        '<textarea class="in" name="body" rows="3" maxlength="5000" placeholder="Message to ' + esc(fn) + '"></textarea>' +
+        '<div class="files" id="files"></div>' +
+        '<div class="acts"><button type="button" class="btn" id="add">+ Add video</button><input type="file" id="pick" accept="video/*" multiple hidden>' +
+        '<span style="flex:1"></span><button type="button" class="btn" id="close">Close lesson</button><button type="submit" class="btn acc" data-done="0">Send</button></div><p class="err" id="e" hidden></p></form>';
     } else if (isCoach) {
-      composer = '<div class="panel muted" style="text-align:center">All lessons with ' + esc(fn) + ' are done. When they book again, it appears here and in your Lessons.</div>';
+      composer = '<div class="panel muted" style="text-align:center">All lessons with ' + esc(fn) + ' are closed. When they book again, it appears here and in your Lessons.</div>';
+    } else if (followup) {
+      composer = '<form class="panel composer" id="cf"><h3>How are you getting on?</h3>' +
+        '<p class="muted small">Tell ' + esc(fn) + ' how the drills are going or ask a quick question. You can chat here until ' + esc(fn) + ' closes the lesson.</p>' +
+        '<textarea class="in" name="body" rows="3" maxlength="5000" placeholder="Message to ' + esc(fn) + '"></textarea>' +
+        '<div class="files" id="files"></div>' +
+        '<div class="acts"><button type="button" class="btn" id="add">+ Add video</button><input type="file" id="pick" accept="video/*" multiple hidden>' +
+        '<span style="flex:1"></span><button type="submit" class="btn acc" data-done="0">Send</button></div><p class="err" id="e" hidden></p></form>' +
+        '<div class="panel" style="display:flex;justify-content:space-between;align-items:center;gap:14px;flex-wrap:wrap"><div><b>Want a full new lesson?</b><div class="muted small">' + money(o.price_pence) + ' per lesson. It goes into this same space.</div></div><a class="btn" href="#/book/' + o.id + '">Book another lesson</a></div>';
     } else if (open) {
       composer = '<form class="panel composer" id="cf"><h3>Add to this lesson</h3><p class="muted small">Forgot something? Send ' + esc(fn) + ' another message or clip.</p>' +
         '<textarea class="in" name="body" rows="3" maxlength="5000" placeholder="Message to ' + esc(fn) + '"></textarea>' +
@@ -890,6 +919,12 @@
     $('#add').onclick = function () { $('#pick').click(); };
     $('#pick').onchange = function (ev) { picker.add(ev.target.files); ev.target.value = ''; };
     if ($('#rec')) { $('#rec').onclick = function () { $('#cam').click(); }; $('#cam').onchange = function (ev) { picker.add(ev.target.files); ev.target.value = ''; }; }
+    if ($('#close')) $('#close').onclick = function () {
+      if (!confirm('Close this lesson? ' + fn + ' will not be able to send more messages until they book again.')) return;
+      this.disabled = true;
+      rpc('close_lesson', { p_lesson: active.id }).then(function () { toast('Lesson closed'); refreshNewCount(); pageSpace(other); })
+        .catch(function (err) { toast(err.message, true); });
+    };
     var doneFlag = false;
     $$('button[type=submit]', form).forEach(function (b) { b.onclick = function () { doneFlag = b.getAttribute('data-done') === '1'; }; });
     form.onsubmit = function (ev) {
@@ -900,7 +935,7 @@
       if (isCoach && doneFlag && !picker.files.length && !confirm('Mark this lesson done without a video reply?')) return;
       var btns = $$('button', form); btns.forEach(function (b) { b.disabled = true; });
       picker.uploadAll().then(function (paths) {
-        return rpc('send_message', { p_lesson: open.id, p_body: body, p_videos: paths, p_mark_done: !!(isCoach && doneFlag) });
+        return rpc('send_message', { p_lesson: active.id, p_body: body, p_videos: paths, p_mark_done: !!(isCoach && doneFlag && open) });
       }).then(function () {
         toast(isCoach && doneFlag ? 'Sent. ' + fn + ' has been told the lesson is ready.' : 'Sent');
         refreshNewCount();

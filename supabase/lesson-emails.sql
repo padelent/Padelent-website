@@ -132,8 +132,8 @@ begin
   if new.sender_id = l.player_id then
     select email into v_to from auth.users where id = l.coach_id;
     perform public.send_padelent_email(v_to,
-      v_from || ' added to their lesson',
-      v_from || ' sent you more',
+      case when l.status = 'done' then v_from || ' sent you a follow-up message' else v_from || ' added to their lesson' end,
+      case when l.status = 'done' then v_from || ' sent you a message' else v_from || ' sent you more' end,
       array_remove(array['On the lesson "' || l.topic || '":',
         nullif(left(new.body, 300), ''),
         case when coalesce(array_length(new.videos, 1), 0) > 0
@@ -156,7 +156,8 @@ language plpgsql security definer set search_path = public as $$
 declare l public.lessons; v_to text; v_from text;
 begin
   select * into l from public.lessons where id = new.lesson_id;
-  if l.id is null or new.sender_id <> l.coach_id or l.status = 'done' then return null; end if;
+  -- Skip the reply that finishes the lesson ("Your lesson is ready" covers it); follow-up chat after that still emails.
+  if l.id is null or new.sender_id <> l.coach_id or (l.status = 'done' and l.done_at >= now()) then return null; end if;
   v_from := public.first_name_of(l.coach_id);
   select email into v_to from auth.users where id = l.player_id;
   perform public.send_padelent_email(v_to,

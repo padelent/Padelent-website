@@ -176,6 +176,7 @@ textarea.in { min-height: 110px; resize: vertical; line-height: 1.5; }
 .st.open { background: rgba(77, 156, 255, 0.16); color: #7DB8FF; }
 .st.open.fresh { background: #4D9CFF; color: #FFFFFF; }
 .st.done { background: rgba(52, 211, 120, 0.16); color: #4ADE8A; }
+.st.closed { background: var(--raise); color: var(--muted); }
 .space { display: grid; grid-template-columns: 330px 1fr; gap: 28px; align-items: start; }
 @media (max-width: 900px) { .space { grid-template-columns: 1fr; gap: 18px; } }
 .space aside { display: flex; flex-direction: column; gap: 16px; }
