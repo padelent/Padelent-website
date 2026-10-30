@@ -167,14 +167,15 @@ textarea.in { min-height: 110px; resize: vertical; line-height: 1.5; }
 .list { background: var(--card); border: 1px solid var(--line); border-radius: 18px; overflow: hidden; }
 .lrow { display: flex; align-items: center; gap: 16px; padding: 16px 20px; border-bottom: 1px solid var(--line); color: #fff; text-decoration: none; border-left: 4px solid transparent; }
 .lrow:last-child { border-bottom: 0; }
-.lrow.new { border-left-color: var(--acc); }
+.lrow.new { border-left-color: #4D9CFF; }
 .lrow .main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
 .lrow .t { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .lrow .side { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; flex: none; }
-.st { font-size: 13px; font-weight: 700; border-radius: 99px; padding: 4px 11px; white-space: nowrap; }
-.st.new { background: var(--acc); color: var(--navy); }
-.st.awaiting { border: 1.5px solid var(--amber); color: var(--amber); padding: 3px 10px; }
-.st.done { background: var(--raise); color: var(--muted); }
+.st { display: inline-flex; align-items: center; gap: 7px; font-size: 13px; font-weight: 700; border-radius: 99px; padding: 5px 12px 5px 10px; white-space: nowrap; }
+.st i { width: 8px; height: 8px; border-radius: 50%; background: currentColor; flex: none; }
+.st.open { background: rgba(77, 156, 255, 0.16); color: #7DB8FF; }
+.st.open.fresh { background: #4D9CFF; color: #FFFFFF; }
+.st.done { background: rgba(52, 211, 120, 0.16); color: #4ADE8A; }
 .space { display: grid; grid-template-columns: 330px 1fr; gap: 28px; align-items: start; }
 @media (max-width: 900px) { .space { grid-template-columns: 1fr; gap: 18px; } }
 .space aside { display: flex; flex-direction: column; gap: 16px; }
@@ -221,3 +222,51 @@ details.game summary::-webkit-details-marker { display: none; }
 .table th { color: var(--muted); font-weight: 700; }
 .admin-coach { display: flex; gap: 16px; align-items: flex-start; padding: 16px 0; border-bottom: 1px solid var(--line); }
 .admin-coach:last-child { border-bottom: 0; }
+
+/* ---------- Coach profile (Skillest-style) ---------- */
+.cpwrap { display: flex; flex-direction: column; gap: 0; margin-top: -8px; }
+.cphero { position: relative; overflow: hidden; border-radius: 24px; min-height: 360px; display: flex; align-items: flex-end; justify-content: center; text-align: center; }
+.cphero .cover { position: absolute; inset: -30px; width: calc(100% + 60px); height: calc(100% + 60px); object-fit: cover; filter: blur(16px) brightness(.55); }
+.cphero .court-bg { opacity: .18; }
+.cphero .shade { position: absolute; inset: 0; background: linear-gradient(180deg, rgba(10,20,32,.15) 0%, rgba(10,20,32,.55) 60%, rgba(10,20,32,.9) 100%); }
+.cphero .in { position: relative; padding: 70px 20px 26px; display: flex; flex-direction: column; align-items: center; gap: 6px; }
+.round-btn { position: absolute; left: 14px; top: 14px; z-index: 2; width: 44px; height: 44px; border-radius: 50%; background: rgba(10,20,32,.55); display: flex; align-items: center; justify-content: center; }
+.bigav { width: 132px; height: 132px; border-radius: 50%; border: 4px solid rgba(255,255,255,.9); overflow: hidden; display: flex; align-items: center; justify-content: center; box-shadow: 0 10px 30px rgba(0,0,0,.35); margin-bottom: 8px; }
+.bigav img { width: 100%; height: 100%; object-fit: cover; }
+.bigav span { font-family: var(--head); font-weight: 800; font-size: 46px; color: #fff; }
+.cphero .nm { display: flex; align-items: center; gap: 8px; justify-content: center; flex-wrap: wrap; }
+.cphero h1 { font-size: clamp(28px, 6vw, 38px); }
+.cphero .club { font-size: 17px; color: #E8EEF3; }
+.cphero .loc { display: flex; align-items: center; gap: 6px; color: #D5DEE6; font-size: 15px; }
+.cphero .hl { margin-top: 6px; max-width: 520px; color: #D5DEE6; font-size: 15px; }
+.cpstats { display: grid; grid-template-columns: repeat(3, 1fr); background: var(--card); border: 1px solid var(--line); border-radius: 18px; margin-top: 14px; }
+.cpstats > div { padding: 16px 8px; display: flex; flex-direction: column; align-items: center; gap: 2px; text-align: center; }
+.cpstats > div + div { border-left: 1px solid var(--line); }
+.cpstats b { font-family: var(--head); font-weight: 800; font-size: 24px; display: inline-flex; align-items: center; gap: 6px; }
+.cpstats span { color: var(--muted); font-size: 14px; }
+.cpsec { display: flex; flex-direction: column; gap: 14px; padding: 28px 2px 4px; }
+.cpsec .lab { font-size: 13px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; color: var(--muted); }
+.cpsec .bio { color: var(--soft); font-size: 17px; white-space: pre-wrap; display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden; }
+.cpsec .bio.open { display: block; }
+.cpsec .more { align-self: flex-end; min-height: 32px; }
+.ticks { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 12px; }
+.ticks li { display: flex; align-items: center; gap: 12px; font-size: 17px; }
+.ig { display: inline-flex; align-items: center; gap: 12px; color: #fff; text-decoration: none; font-size: 17px; font-weight: 700; min-height: 44px; }
+.rv { padding: 16px 0; border-bottom: 1px solid var(--line); display: flex; flex-direction: column; gap: 10px; }
+.rv:last-child { border-bottom: 0; }
+.rv-top { display: flex; gap: 12px; align-items: center; }
+.rv .rate { background: #fff; color: var(--navy); border-radius: 12px; padding: 6px 12px; font-weight: 800; display: inline-flex; align-items: center; gap: 6px; box-shadow: 0 4px 14px rgba(0,0,0,.25); }
+.rv p { color: var(--soft); font-size: 16px; }
+.cpbar { position: fixed; left: 50%; transform: translateX(-50%); bottom: 16px; z-index: 25; width: min(728px, calc(100% - 32px)); display: flex; align-items: center; gap: 14px; background: rgba(27,37,48,.97); border: 1px solid var(--line); border-radius: 20px; padding: 10px 10px 10px 18px; box-shadow: 0 10px 30px rgba(0,0,0,.4); }
+.cpbar .price { flex: 1; display: flex; flex-direction: column; line-height: 1.2; }
+.cpbar .price b { font-family: var(--head); font-weight: 800; font-size: 20px; }
+.cpbar .price span { color: var(--muted); font-size: 13px; }
+@media (max-width: 760px) {
+  .cpwrap { margin: -20px -16px 0; }
+  .cphero { border-radius: 0 0 24px 24px; min-height: 340px; }
+  .cpstats { margin: 14px 16px 0; }
+  .cpsec { padding: 26px 18px 4px; }
+  .cpbar { bottom: calc(var(--tabbar) + env(safe-area-inset-bottom) + 10px); }
+  .stat { padding: 12px 14px; }
+  .stat .v { font-size: 22px; }
+}

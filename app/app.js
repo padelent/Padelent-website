@@ -275,9 +275,13 @@
       '<div class="meta">' + ratingHtml(c) + '<span>' + money(c.price_pence) + '<span class="muted"> / lesson</span></span></div>' +
       (c.lessons_done ? '<div class="muted small">' + c.lessons_done + ' lesson' + (c.lessons_done === 1 ? '' : 's') + ' given</div>' : '') + '</a>';
   }
+  // Blue = still open (the coach has not finished it). Green = done.
   function statusPill(s, forRole) {
-    if (forRole === 'coach') return '<span class="st ' + s + '">' + ({ 'new': 'New', awaiting: 'Awaiting your reply', done: '✓ Done' }[s] || s) + '</span>';
-    return '<span class="st ' + s + '">' + ({ 'new': 'Sent', awaiting: 'Coach is reviewing', done: '✓ Coach replied' }[s] || s) + '</span>';
+    var open = s !== 'done';
+    var label = forRole === 'coach'
+      ? ({ 'new': 'New', awaiting: 'Open', done: 'Done' }[s] || s)
+      : (open ? 'Open' : 'Done');
+    return '<span class="st ' + (open ? 'open' : 'done') + (s === 'new' && forRole === 'coach' ? ' fresh' : '') + '"><i></i>' + label + '</span>';
   }
   function fileRow(f, i) {
     return '<div class="file" data-i="' + i + '"><span class="nm">' + esc(f.name || 'Video') + '</span><span class="muted small">' +
@@ -569,44 +573,70 @@
       var canBook = !preview && (!me || me.role === 'player');
       var facts = [['Racket', c.racket], ['Plays with', HAND[c.hand]], ['Court side', SIDE[c.side]], ['Playing level', c.playing_level],
         ['Coaching for', c.years_coaching != null && c.years_coaching !== '' ? c.years_coaching + ' year' + (c.years_coaching == 1 ? '' : 's') : ''],
-        ['Qualifications', c.qualifications], ['Languages', c.languages], ['Home club', c.club], ['Based in', c.city]]
+        ['Qualifications', c.qualifications], ['Languages', c.languages]]
         .filter(function (f) { return f[1]; });
-      var counts = [0, 0, 0, 0, 0, 0]; reviews.forEach(function (rv) { counts[rv.rating]++; });
-      var media = c.intro_video_url
-        ? '<div class="media16"><video controls playsinline preload="metadata" src="' + esc(c.intro_video_url) + '#t=0.1"' + (c.photo_url ? ' poster="' + esc(c.photo_url) + '"' : '') + '></video></div>'
-        : photoBox(c.full_name, c.id, c.photo_url, '16 / 10');
-      var bookBox = canBook
-        ? '<aside class="panel book"><h3 style="font-size:22px">Book a video lesson</h3>' +
-          '<div class="opt"><span style="flex:1"><span style="display:flex;justify-content:space-between;font-weight:700;font-size:18px"><span>Video lesson</span><span>' + money(c.price_pence) + '</span></span>' +
-          '<span class="muted small" style="display:block;margin-top:2px">Send up to 3 clips. ' + esc(fn) + ' sends back a personal video reply with drills to practise.</span></span></div>' +
-          '<a class="btn acc big block" href="' + bookHref + '">Upload your video</a>' +
-          '<p class="muted small">Every lesson is kept in your private space with ' + esc(fn) + ', so you can both look back at past lessons.</p></aside>'
-        : (isMe ? '<aside class="panel book"><h3>This is your public profile</h3><p class="muted">' + (preview ? 'Only you can see it until we approve your account.' : 'Players see exactly this.') + '</p><a class="btn acc" href="#/profile">Edit profile</a></aside>' : '<aside class="panel book"><h3>' + money(c.price_pence) + ' per lesson</h3><p class="muted">Log in with a player account to book a lesson.</p></aside>');
+      var ig = String(c.instagram || '').replace(/^@/, '');
+      var pin = '<svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 21s-7-6.2-7-11.5A7 7 0 0119 9.5C19 14.8 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.5"/></svg>';
+      var tickList = '<svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#D7F23A" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>';
+      var igIcon = '<svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#D7F23A" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="5"/><circle cx="12" cy="12" r="4"/><circle cx="17.5" cy="6.5" r="1.2" fill="#D7F23A" stroke="none"/></svg>';
+      var avatarIn = c.photo_url ? '<img src="' + esc(c.photo_url) + '" alt="">' : '<span>' + esc(initials(c.full_name)) + '</span>';
+      var shown = 5;
+
+      var hero = '<section class="cphero" style="background:' + grad(c.id) + '">' +
+        (c.photo_url ? '<img class="cover" src="' + esc(c.photo_url) + '" alt="">' : I.court) +
+        '<div class="shade"></div>' +
+        '<a class="round-btn" href="#/coaches" aria-label="Back to coaches">' +
+          '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M11 6l-6 6 6 6"/></svg></a>' +
+        '<div class="in">' +
+          '<div class="bigav" style="background:' + grad(c.id) + '">' + avatarIn + '</div>' +
+          '<div class="nm"><h1>' + esc(c.full_name) + '</h1>' + I.tick.replace('width="18" height="18"', 'width="24" height="24"') + '</div>' +
+          (c.club ? '<div class="club">' + esc(c.club) + '</div>' : '') +
+          (c.city ? '<div class="loc">' + pin + esc(c.city) + '</div>' : '') +
+          (c.headline ? '<div class="hl">' + esc(c.headline) + '</div>' : '') +
+        '</div></section>';
+
+      var stats = '<div class="cpstats">' +
+        '<div><b>' + (c.review_count ? fmtRating(c.avg_rating) + ' ' + I.star(true, 20) : 'New') + '</b><span>' + (c.review_count ? c.review_count + ' rating' + (c.review_count === 1 ? '' : 's') : 'No ratings yet') + '</span></div>' +
+        '<div><b>' + money(c.price_pence) + '</b><span>Per lesson</span></div>' +
+        '<div><b>' + (c.lessons_done || 0) + '</b><span>Lesson' + (c.lessons_done === 1 ? '' : 's') + '</span></div></div>';
+
+      var about = (c.intro_video_url || c.bio) ? '<section class="cpsec"><div class="lab">About</div>' +
+        (c.intro_video_url ? '<div class="media16"><video controls playsinline preload="metadata" src="' + esc(c.intro_video_url) + '#t=0.1"' + (c.photo_url ? ' poster="' + esc(c.photo_url) + '"' : '') + '></video></div>' : '') +
+        (c.bio ? '<p class="bio" id="bio">' + esc(c.bio) + '</p><button class="link more" id="more" hidden>Read more</button>' : '') + '</section>' : '';
+
+      var specs = (c.specialities || []).length ? '<section class="cpsec"><div class="lab">Specialities</div><ul class="ticks">' +
+        c.specialities.map(function (x) { return '<li>' + tickList + esc(x) + '</li>'; }).join('') + '</ul></section>' : '';
+
+      var playing = facts.length ? '<section class="cpsec"><div class="lab">Playing profile</div><div>' +
+        facts.map(function (f) { return '<div class="kv"><span class="muted">' + f[0] + '</span><b>' + esc(f[1]) + '</b></div>'; }).join('') + '</div></section>' : '';
+
+      var follow = ig ? '<section class="cpsec"><div class="lab">Follow me on</div><a class="ig" href="https://www.instagram.com/' + encodeURIComponent(ig) + '/" target="_blank" rel="noopener">' + igIcon + esc(ig) + '</a></section>' : '';
+
+      function reviewHtml(rv) {
+        return '<div class="rv"><div class="rv-top"><span class="avatar">' + esc(initials(rv.display_name)) + '</span>' +
+          '<div style="flex:1;min-width:0"><b>' + esc(rv.display_name) + '</b><div class="muted small">' + shortDate(rv.created_at) + (rv.topic ? ' · ' + esc(rv.topic) : '') + '</div></div>' +
+          '<span class="rate">' + rv.rating.toFixed(1) + ' ' + I.star(true, 16).replace(/#D7F23A/g, '#F5B301') + '</span></div>' +
+          (rv.comment ? '<p>' + esc(rv.comment) + '</p>' : '') +
+          ((rv.tags || []).length ? '<div class="chips">' + rv.tags.map(function (x) { return '<span class="chip" style="min-height:30px;font-size:13px">' + esc(x) + '</span>'; }).join('') + '</div>' : '') + '</div>';
+      }
+      var revs = '<section class="cpsec"><div class="lab">Most recent reviews</div>' + (reviews.length
+        ? '<div id="revs">' + reviews.slice(0, shown).map(reviewHtml).join('') + '</div>' + (reviews.length > shown ? '<button class="btn sm" id="allrevs" style="align-self:flex-start">Show all ' + reviews.length + ' reviews</button>' : '')
+        : '<p class="muted">No reviews yet. Be the first to book a lesson with ' + esc(fn) + '.</p>') + '</section>';
+
+      var bar = canBook
+        ? '<div class="cpbar"><div class="price"><b>' + money(c.price_pence) + '</b><span>per lesson</span></div><a class="btn acc big" href="' + bookHref + '">Book a lesson</a></div>'
+        : (isMe ? '<div class="cpbar"><div class="price"><b>Your profile</b><span>' + (preview ? 'Only you can see it until approved' : 'This is what players see') + '</span></div><a class="btn acc" href="#/profile">Edit profile</a></div>' : '');
+
       render(shell('coaches',
-        '<a class="back" href="#/coaches">‹ All coaches</a>' +
         (preview ? '<div class="notice warn">' + I.info + '<span>Preview. Your profile is not public yet. We will approve it once it is complete.</span></div>' : '') +
-        '<div class="cp"><div style="display:flex;flex-direction:column;gap:18px">' + media +
-        '<div><div style="display:flex;align-items:center;gap:10px"><h1>' + esc(c.full_name) + '</h1>' + I.tick.replace('width="18" height="18"', 'width="26" height="26"') + '</div>' +
-        '<p style="color:#D5DEE6;margin-top:6px;font-size:18px">' + esc([c.club, c.city].filter(Boolean).join(', ')) + (c.headline ? ' · ' + esc(c.headline) : '') + '</p>' +
-        '<div class="meta" style="margin-top:10px">' + ratingHtml(c) + (c.lessons_done ? '<span>' + c.lessons_done + ' <span class="muted">lessons given</span></span>' : '') + '</div></div></div>' +
-        bookBox + '</div>' +
-        (facts.length ? '<section class="section"><h2>Playing profile</h2><div class="factgrid">' + facts.map(function (f) {
-          return '<div class="fact"><div class="k">' + f[0] + '</div><div class="v">' + esc(f[1]) + '</div></div>'; }).join('') + '</div></section>' : '') +
-        (c.bio || (c.specialities || []).length ? '<section class="cp" style="gap:40px">' +
-          '<div class="section"><h2>About ' + esc(fn) + '</h2><p class="muted" style="color:var(--soft);white-space:pre-wrap">' + esc(c.bio || '') + '</p></div>' +
-          '<div class="section"><h2>Specialities</h2><div class="chips">' + (c.specialities || []).map(function (s) { return '<span class="chip">' + esc(s) + '</span>'; }).join('') + '</div></div></section>' : '') +
-        '<section class="section"><h2>Reviews</h2>' + (reviews.length
-          ? '<div style="display:flex;gap:32px;flex-wrap:wrap;align-items:flex-start"><div style="display:flex;flex-direction:column;gap:10px;min-width:240px">' +
-            '<div style="display:flex;align-items:baseline;gap:10px"><span style="font-family:var(--head);font-weight:800;font-size:52px;line-height:1">' + fmtRating(c.avg_rating || 0) + '</span><span class="muted">' + reviews.length + ' review' + (reviews.length === 1 ? '' : 's') + '</span></div>' +
-            '<div class="bars">' + [5, 4, 3, 2, 1].map(function (s) { var pc = Math.round(counts[s] * 100 / reviews.length); return '<div class="bar"><span>' + s + '</span><i><b style="width:' + pc + '%"></b></i><span style="width:36px;text-align:right">' + pc + '%</span></div>'; }).join('') + '</div></div>' +
-            '<div class="reviews" style="flex:1;min-width:260px">' + reviews.map(function (rv) {
-              return '<div class="review"><div style="display:flex;gap:3px">' + [1, 2, 3, 4, 5].map(function (i) { return I.star(i <= rv.rating); }).join('') + '</div>' +
-                (rv.comment ? '<p style="color:var(--soft)">' + esc(rv.comment) + '</p>' : '') +
-                ((rv.tags || []).length ? '<div class="chips">' + rv.tags.map(function (x) { return '<span class="chip" style="min-height:30px;font-size:13px">' + esc(x) + '</span>'; }).join('') + '</div>' : '') +
-                '<div class="small"><b>' + esc(rv.display_name) + '</b> <span class="muted">· ' + esc(rv.topic || '') + ' · ' + shortDate(rv.created_at) + '</span></div></div>';
-            }).join('') + '</div></div>'
-          : '<p class="muted">No reviews yet. Be the first to book a lesson with ' + esc(fn) + '.</p>') + '</section>' +
-        (canBook ? '<div class="sticky-cta"><div style="flex:1"><b>' + money(c.price_pence) + '</b> <span class="muted small">per lesson</span></div><a class="btn acc" href="' + bookHref + '">Upload your video</a></div><div style="height:40px"></div>' : '')));
+        '<div class="cpwrap">' + hero + stats + about + specs + playing + follow + revs + '</div>' + (bar ? bar + '<div style="height:70px"></div>' : ''), { narrow: true }));
+
+      var bio = $('#bio'), more = $('#more');
+      if (bio && more && bio.scrollHeight > bio.clientHeight + 4) {
+        more.hidden = false;
+        more.onclick = function () { var open = bio.classList.toggle('open'); more.textContent = open ? 'Show less' : 'Read more'; };
+      }
+      if ($('#allrevs')) $('#allrevs').onclick = function () { $('#revs').innerHTML = reviews.map(reviewHtml).join(''); this.remove(); };
     }).catch(function (e) { if (t === navToken) failed('coaches', e); });
   }
 
@@ -690,10 +720,10 @@
         (!c.approved ? approvalNotice() : '') +
         '<div><h1>Lessons</h1><p class="muted" style="margin-top:6px">Newest first. Tap a player to open your lessons with them.</p></div>' +
         '<div class="stats"><div class="stat"><div class="muted small">New lessons</div><div class="v">' + n['new'] + '</div></div>' +
-        '<div class="stat"><div class="muted small">Awaiting your reply</div><div class="v">' + n.awaiting + '</div></div>' +
+        '<div class="stat"><div class="muted small">Open lessons</div><div class="v">' + n.awaiting + '</div></div>' +
         '<div class="stat"><div class="muted small">Done this month</div><div class="v">' + doneMonth.length + '</div></div>' +
         '<div class="stat"><div class="muted small">Earned this month</div><div class="v">' + money(earned) + '</div></div></div>' +
-        '<div class="tabs" role="tablist">' + [['all', 'All'], ['new', 'New'], ['awaiting', 'Awaiting your reply'], ['done', 'Done']].map(function (x) {
+        '<div class="tabs" role="tablist">' + [['all', 'All'], ['new', 'New'], ['awaiting', 'Open'], ['done', 'Done']].map(function (x) {
           return '<button role="tab" data-tab="' + x[0] + '" class="' + (x[0] === tab ? 'on' : '') + '">' + x[1] + '<span class="c">' + (n[x[0]] || 0) + '</span></button>'; }).join('') + '</div>' +
         '<div id="feed"></div>'));
       function draw() {
@@ -1045,6 +1075,7 @@
       '<div class="row2"><label class="f">Playing level<input class="in" name="playing_level" maxlength="120" value="' + esc(c.playing_level) + '" placeholder="e.g. Former pro, Spanish circuit"></label>' +
       '<label class="f">Qualifications<input class="in" name="qualifications" maxlength="200" value="' + esc(c.qualifications) + '" placeholder="e.g. LTA Padel Coach Level 2"></label></div>' +
       '<label class="f">Languages<input class="in" name="languages" maxlength="120" value="' + esc(c.languages) + '" placeholder="e.g. English, Spanish"></label>' +
+      '<label class="f">Instagram <span class="hint">Your handle, shown on your profile</span><input class="in" name="instagram" maxlength="60" value="' + esc(c.instagram) + '" placeholder="e.g. martapadel" autocapitalize="off" autocorrect="off"></label>' +
       '<p class="err" id="e" hidden></p><button class="btn acc big" type="submit" style="align-self:flex-end">Save profile</button></form>' + logoutBtn(), { narrow: true }));
     wireChips($('#f')); wireLogout();
     var f = $('#f');
@@ -1081,7 +1112,8 @@
       rpc('save_my_profile', { p: { full_name: f.full_name.value, headline: f.headline.value.trim(), club: f.club.value.trim(), city: f.city.value.trim(),
         bio: f.bio.value.trim(), price_pence: price, specialities: multiVal('specialities'), hand: segVal('hand'), side: segVal('side'),
         racket: f.racket.value.trim(), years_coaching: f.years_coaching.value, playing_level: f.playing_level.value.trim(),
-        qualifications: f.qualifications.value.trim(), languages: f.languages.value.trim() } })
+        qualifications: f.qualifications.value.trim(), languages: f.languages.value.trim(),
+        instagram: f.instagram.value.trim().replace(/^https?:\/\/(www\.)?instagram\.com\//i, '').replace(/[\/?#].*$/, '').replace(/^@/, '') } })
         .then(function (p2) { me = p2; toast('Profile saved'); coachProfileForm(); })
         .catch(function (err) { e.textContent = err.message; e.hidden = false; b.disabled = false; });
     };
