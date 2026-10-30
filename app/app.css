@@ -271,3 +271,32 @@ details.game summary::-webkit-details-marker { display: none; }
   .stat { padding: 12px 14px; }
   .stat .v { font-size: 22px; }
 }
+
+/* ---------- Inbox, lesson options, admin tabs ---------- */
+.inbox-btn { position: relative; width: 42px; height: 42px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; color: #fff; border: 1px solid var(--line); }
+.inbox-btn .count { position: absolute; top: -4px; right: -4px; }
+.tabs a { color: var(--muted); font-weight: 700; padding: 0 2px 12px; border-bottom: 3px solid transparent; display: flex; gap: 8px; align-items: center; white-space: nowrap; min-height: 44px; text-decoration: none; }
+.tabs a.on { color: #fff; border-bottom-color: var(--acc); }
+.freetag { display: inline-block; background: rgba(215,242,58,.15); color: var(--acc); font-size: 12px; font-weight: 700; border-radius: 99px; padding: 1px 8px; }
+.soon { font-style: normal; font-size: 11px; font-weight: 700; letter-spacing: .04em; background: var(--raise); color: var(--muted); border-radius: 99px; padding: 2px 8px; margin-left: 6px; vertical-align: middle; }
+.lopts { display: flex; flex-direction: column; gap: 10px; }
+.lopt { display: flex; gap: 14px; align-items: center; justify-content: space-between; background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 14px 16px; color: #fff; text-align: left; width: 100%; font: inherit; }
+.lopt b { display: block; font-size: 17px; }
+.lopt span { display: block; color: var(--muted); font-size: 14px; font-weight: 400; margin-top: 2px; }
+.lopt em { font-style: normal; font-family: var(--head); font-weight: 800; font-size: 20px; white-space: nowrap; }
+.lopt em small { font-family: var(--body); font-size: 13px; color: var(--muted); font-weight: 500; }
+.lopt.pick { cursor: pointer; }
+.lopt.pick.on { border: 2px solid var(--acc); padding: 13px 15px; }
+.lopt.pick[disabled] { opacity: .5; cursor: not-allowed; }
+.lset { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 14px 16px; display: flex; flex-direction: column; gap: 12px; }
+.tg { display: flex; gap: 14px; align-items: flex-start; cursor: pointer; font-weight: 700; }
+.tg input { position: absolute; opacity: 0; width: 1px; height: 1px; }
+.tg > span { flex: none; width: 46px; height: 28px; border-radius: 99px; background: #3A4654; position: relative; transition: background .15s; margin-top: 1px; }
+.tg > span::after { content: ""; position: absolute; left: 3px; top: 3px; width: 22px; height: 22px; border-radius: 50%; background: #fff; transition: transform .15s; }
+.tg input:checked + span { background: var(--acc); }
+.tg input:checked + span::after { transform: translateX(18px); background: var(--navy); }
+.tg input:focus-visible + span { outline: 3px solid var(--acc); outline-offset: 2px; }
+.tg small { display: block; color: var(--muted); font-weight: 400; font-size: 14px; margin-top: 2px; }
+.lsub { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding-left: 60px; font-weight: 700; }
+.lsub .in { width: 110px; min-height: 44px; padding: 8px 12px; }
+@media (max-width: 760px) { .lsub { padding-left: 0; } }

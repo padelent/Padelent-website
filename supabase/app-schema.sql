@@ -64,6 +64,14 @@ create table if not exists public.lessons (
   opened_at timestamptz,
   done_at timestamptz
 );
+-- Lesson options each coach can switch on: free trial, single lesson, monthly plan.
+alter table public.coaches add column if not exists offers_free boolean not null default false;
+alter table public.coaches add column if not exists offers_single boolean not null default true;
+alter table public.coaches add column if not exists offers_monthly boolean not null default false;
+alter table public.coaches add column if not exists monthly_price_pence int check (monthly_price_pence between 500 and 100000);
+alter table public.coaches add column if not exists monthly_videos_per_week int not null default 1 check (monthly_videos_per_week between 1 and 14);
+alter table public.lessons add column if not exists kind text not null default 'single' check (kind in ('single', 'free', 'monthly'));
+
 -- After a lesson is done, player and coach can keep chatting until the coach closes it.
 alter table public.lessons add column if not exists closed_at timestamptz;
 alter table public.lessons add column if not exists needs_coach boolean not null default false;
@@ -177,6 +185,7 @@ create view public.coach_cards as
 select c.id, p.full_name, c.headline, c.club, c.city, c.bio, c.photo_url, c.intro_video_url,
        c.racket, c.hand, c.side, c.playing_level, c.years_coaching, c.qualifications, c.languages,
        c.specialities, c.price_pence, c.created_at,
+       c.offers_free, c.offers_single, c.offers_monthly, c.monthly_price_pence, c.monthly_videos_per_week,
        coalesce(r.avg_rating, 0)::float as avg_rating,
        coalesce(r.review_count, 0)::int as review_count,
        coalesce(l.lessons_done, 0)::int as lessons_done
@@ -233,8 +242,19 @@ begin
       languages      = coalesce(p->>'languages', languages),
       specialities   = case when p ? 'specialities' then array(select jsonb_array_elements_text(p->'specialities')) else specialities end,
       price_pence    = coalesce((p->>'price_pence')::int, price_pence),
+      offers_free    = coalesce((p->>'offers_free')::boolean, offers_free),
+      offers_single  = coalesce((p->>'offers_single')::boolean, offers_single),
+      offers_monthly = coalesce((p->>'offers_monthly')::boolean, offers_monthly),
+      monthly_price_pence = case when p ? 'monthly_price_pence' then nullif(p->>'monthly_price_pence', '')::int else monthly_price_pence end,
+      monthly_videos_per_week = coalesce((p->>'monthly_videos_per_week')::int, monthly_videos_per_week),
       updated_at     = now()
     where id = v_uid;
+    if exists (select 1 from public.coaches where id = v_uid and not (offers_free or offers_single or offers_monthly)) then
+      raise exception 'Switch on at least one lesson option.';
+    end if;
+    if exists (select 1 from public.coaches where id = v_uid and offers_monthly and monthly_price_pence is null) then
+      raise exception 'Set a price for your monthly plan.';
+    end if;
   else
     update public.players set
       level      = case when p ? 'level' then nullif(p->>'level', '')::numeric else level end,
@@ -254,16 +274,31 @@ end $$;
 
 -- ---------- Lessons ----------------------------------------------------
 
-create or replace function public.book_lesson(p_coach uuid, p_topic text, p_body text, p_videos text[])
+drop function if exists public.book_lesson(uuid, text, text, text[]);
+create or replace function public.book_lesson(p_coach uuid, p_topic text, p_body text, p_videos text[], p_kind text default 'single')
 returns uuid
 language plpgsql security definer set search_path = public as $$
-declare v_uid uuid := auth.uid(); v_price int; v_id uuid; v text;
+declare v_uid uuid := auth.uid(); c public.coaches; v_price int; v_id uuid; v text;
 begin
   if not exists (select 1 from public.players where id = v_uid) then
     raise exception 'Only player accounts can book lessons.';
   end if;
-  select price_pence into v_price from public.coaches where id = p_coach and approved;
-  if v_price is null then raise exception 'This coach is not taking lessons right now.'; end if;
+  select * into c from public.coaches where id = p_coach and approved;
+  if c.id is null then raise exception 'This coach is not taking lessons right now.'; end if;
+  if p_kind = 'free' then
+    if not c.offers_free then raise exception 'This coach does not offer a free lesson.'; end if;
+    if exists (select 1 from public.lessons where player_id = v_uid and coach_id = p_coach and kind = 'free') then
+      raise exception 'You have already had your free lesson with this coach.';
+    end if;
+    v_price := 0;
+  elsif p_kind = 'single' then
+    if not c.offers_single then raise exception 'This coach does not offer single lessons right now.'; end if;
+    v_price := c.price_pence;
+  elsif p_kind = 'monthly' then
+    raise exception 'Monthly plans start when card payments go live.';
+  else
+    raise exception 'Unknown lesson type.';
+  end if;
   if coalesce(trim(p_topic), '') = '' then raise exception 'Tell your coach what you want help with.'; end if;
   if coalesce(array_length(p_videos, 1), 0) = 0 then raise exception 'Add at least one video.'; end if;
   if array_length(p_videos, 1) > 3 then raise exception 'You can send up to 3 videos per lesson.'; end if;
@@ -274,16 +309,23 @@ begin
   update public.lessons set closed_at = now(), needs_coach = false
   where player_id = v_uid and coach_id = p_coach and status = 'done' and closed_at is null;
 
-  insert into public.lessons (player_id, coach_id, topic, status, price_pence, platform_fee_pence)
+  insert into public.lessons (player_id, coach_id, topic, status, price_pence, platform_fee_pence, kind)
   values (v_uid, p_coach, left(trim(p_topic), 140),
-          case when public.payments_required() then 'pending_payment' else 'new' end,
-          v_price, round(v_price * public.platform_fee_percent() / 100.0))
+          case when public.payments_required() and v_price > 0 then 'pending_payment' else 'new' end,
+          v_price, round(v_price * public.platform_fee_percent() / 100.0), p_kind)
   returning id into v_id;
 
   insert into public.messages (lesson_id, sender_id, body, videos)
   values (v_id, v_uid, left(coalesce(p_body, ''), 5000), p_videos);
   return v_id;
 end $$;
+
+-- Player: can I still have a free lesson with this coach?
+create or replace function public.free_lesson_available(p_coach uuid) returns boolean
+language sql stable security definer set search_path = public as $$
+  select exists (select 1 from public.coaches where id = p_coach and approved and offers_free)
+     and not exists (select 1 from public.lessons where player_id = auth.uid() and coach_id = p_coach and kind = 'free')
+$$;
 
 create or replace function public.open_lesson(p_lesson uuid) returns void
 language plpgsql security definer set search_path = public as $$
@@ -364,7 +406,7 @@ end $$;
 create or replace function public.coach_feed() returns json
 language sql stable security definer set search_path = public as $$
   select coalesce(json_agg(x order by x.created_at desc), '[]'::json) from (
-    select l.id, l.player_id, l.topic, l.status, l.created_at, l.price_pence, l.platform_fee_pence, l.closed_at, l.needs_coach,
+    select l.id, l.player_id, l.topic, l.status, l.created_at, l.price_pence, l.platform_fee_pence, l.closed_at, l.needs_coach, l.kind,
            p.full_name as player_name, pl.level, pl.side, pl.hand,
            (select count(*) from public.lessons l2 where l2.player_id = l.player_id and l2.coach_id = l.coach_id
               and l2.status <> 'pending_payment' and l2.created_at <= l.created_at) as nth,
@@ -428,7 +470,7 @@ begin
     'other', v_other,
     'lessons', coalesce((
       select json_agg(json_build_object(
-        'id', l.id, 'topic', l.topic, 'status', l.status, 'price_pence', l.price_pence, 'closed_at', l.closed_at, 'needs_coach', l.needs_coach,
+        'id', l.id, 'topic', l.topic, 'status', l.status, 'price_pence', l.price_pence, 'closed_at', l.closed_at, 'needs_coach', l.needs_coach, 'kind', l.kind,
         'created_at', l.created_at, 'done_at', l.done_at,
         'review', (select json_build_object('rating', r.rating, 'comment', r.comment) from public.reviews r where r.lesson_id = l.id),
         'messages', coalesce((select json_agg(json_build_object(
@@ -469,12 +511,12 @@ end $$;
 
 -- Functions are for logged-in users only (the coach list view above is public).
 revoke execute on function public.my_profile(), public.save_my_profile(jsonb),
-  public.book_lesson(uuid, text, text, text[]), public.open_lesson(uuid), public.close_lesson(uuid),
+  public.book_lesson(uuid, text, text, text[], text), public.free_lesson_available(uuid), public.open_lesson(uuid), public.close_lesson(uuid),
   public.send_message(uuid, text, text[], boolean), public.post_review(uuid, int, text[], text),
   public.coach_feed(), public.player_coaches(), public.get_space(uuid),
   public.admin_overview(), public.admin_set_approved(uuid, boolean) from public, anon;
 grant execute on function public.my_profile(), public.save_my_profile(jsonb),
-  public.book_lesson(uuid, text, text, text[]), public.open_lesson(uuid), public.close_lesson(uuid),
+  public.book_lesson(uuid, text, text, text[], text), public.free_lesson_available(uuid), public.open_lesson(uuid), public.close_lesson(uuid),
   public.send_message(uuid, text, text[], boolean), public.post_review(uuid, int, text[], text),
   public.coach_feed(), public.player_coaches(), public.get_space(uuid),
   public.admin_overview(), public.admin_set_approved(uuid, boolean) to authenticated;

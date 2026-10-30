@@ -204,7 +204,13 @@
     if (!me || me.role !== 'coach') return Promise.resolve();
     return rpc('coach_feed').then(function (f) { state.newCount = (f || []).filter(function (l) { return l.status === 'new' || l.needs_coach; }).length; updateBadges(); }).catch(function () {});
   }
+  function refreshInbox() {
+    if (!me) return Promise.resolve();
+    var p = me.is_admin ? rpc('admin_conversations').then(function (a) { return a ? a.unread : 0; }) : rpc('inbox_unread');
+    return p.then(function (n) { state.inbox = Number(n) || 0; updateBadges(); }).catch(function () {});
+  }
   function updateBadges() {
+    $$('[data-inbox]').forEach(function (b) { b.textContent = state.inbox || ''; b.style.display = state.inbox ? '' : 'none'; });
     $$('[data-badge]').forEach(function (b) { b.textContent = state.newCount; b.style.display = state.newCount ? '' : 'none'; });
   }
 
@@ -227,7 +233,10 @@
         (n[4] ? '<span class="count" data-badge style="display:none"></span>' : '') + '</a>';
     }).join('');
     var right = me
-      ? '<a class="avatar acc" href="#/profile" aria-label="My profile">' + esc(initials(me.full_name)) + '</a>'
+      ? '<a class="inbox-btn" href="' + (me.is_admin ? '#/admin/messages' : '#/inbox') + '" aria-label="Messages from Padelent">' +
+        '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 7l9 6 9-6"/></svg>' +
+        '<span class="count" data-inbox style="display:none"></span></a>' +
+        '<a class="avatar acc" href="#/profile" aria-label="My profile">' + esc(initials(me.full_name)) + '</a>'
       : '<a class="btn sm" href="#/login">Log in</a><a class="btn sm acc" href="#/signup">Sign up</a>';
     var tabs = me ? '<nav class="tabbar" aria-label="App">' + items.map(function (n) {
       return '<a href="' + n[0] + '" class="' + (n[3] === active ? 'on' : '') + '">' + I[n[2]] + '<span>' + n[1] + '</span>' +
@@ -261,6 +270,23 @@
       ? '<span class="star">' + I.star() + fmtRating(c.avg_rating) + ' <span class="muted">(' + c.review_count + ')</span></span>'
       : '<span class="muted" style="font-weight:700">New coach</span>';
   }
+  function profileUrl(id) { return location.origin + '/app/#/coach/' + id; }
+  function shareProfile(id, name) {
+    var url = profileUrl(id);
+    if (navigator.share && /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent)) {
+      navigator.share({ title: name + ' on Padelent', text: 'Book an online padel lesson with me on Padelent', url: url }).catch(function () {});
+      return;
+    }
+    var done = function () { toast('Profile link copied. Paste it into your Instagram bio or stories.'); };
+    if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(url).then(done, function () { window.prompt('Copy your profile link:', url); });
+    else window.prompt('Copy your profile link:', url);
+  }
+  function priceLabel(c) {
+    if (c.offers_single) return money(c.price_pence) + '<span class="muted"> / lesson</span>';
+    if (c.offers_free) return 'Free trial';
+    if (c.offers_monthly && c.monthly_price_pence) return money(c.monthly_price_pence) + '<span class="muted"> / month</span>';
+    return '';
+  }
   function fmtRating(x) { var r = Math.round(Number(x) * 100) / 100; return r % 1 === 0 ? r.toFixed(1) : String(r); }
   function playLine(c) {
     return [SIDE[c.side] ? SIDE[c.side].replace(/ \(.*\)/, '') : '', HAND[c.hand] || ''].filter(Boolean).join(' · ');
@@ -272,7 +298,7 @@
       '<div class="cname"><span>' + esc(c.full_name) + '</span>' + I.tick + '</div>' +
       (where ? '<div class="muted small">' + esc(where) + '</div>' : '') +
       (playLine(c) ? '<div class="small" style="color:#D5DEE6">' + esc(playLine(c)) + '</div>' : '') + '</div>' +
-      '<div class="meta">' + ratingHtml(c) + '<span>' + money(c.price_pence) + '<span class="muted"> / lesson</span></span></div>' +
+      '<div class="meta">' + ratingHtml(c) + '<span>' + priceLabel(c) + '</span>' + (c.offers_free ? '<span class="freetag">Free trial</span>' : '') + '</div>' +
       (c.lessons_done ? '<div class="muted small">' + c.lessons_done + ' lesson' + (c.lessons_done === 1 ? '' : 's') + ' given</div>' : '') + '</a>';
   }
   // Blue = still open or needs the coach. Green = done (follow-up chat still open). Grey = closed.
@@ -455,7 +481,7 @@
     var next = qs('next') || store.get('padelent.next') || '#/';
     store.del('padelent.next');
     if (next.indexOf('#/') !== 0) next = '#/';
-    return loadMe().then(function () { refreshNewCount(); go(next); });
+    return loadMe().then(function () { refreshNewCount(); refreshInbox(); go(next); });
   }
 
   function pageLogin() {
@@ -665,10 +691,12 @@
     loading('coaches');
     Promise.all([
       rest('coach_cards?select=*&id=eq.' + encodeURIComponent(id)),
-      rest('reviews?select=rating,tags,comment,display_name,topic,created_at&coach_id=eq.' + encodeURIComponent(id) + '&order=created_at.desc&limit=40')
+      rest('reviews?select=rating,tags,comment,display_name,topic,created_at&coach_id=eq.' + encodeURIComponent(id) + '&order=created_at.desc&limit=40'),
+      me && me.role === 'player' ? rpc('free_lesson_available', { p_coach: id }).catch(function () { return false; }) : Promise.resolve(null)
     ]).then(function (r) {
       if (t !== navToken) return;
       var c = r[0] && r[0][0], reviews = r[1] || [], preview = false;
+      var freeOk = r[2] === null ? !!(r[0] && r[0][0] && r[0][0].offers_free) : !!r[2];
       if (!c && me && me.id === id && me.coach) {
         preview = true;
         c = Object.assign({}, me.coach, { full_name: me.full_name, avg_rating: 0, review_count: 0, lessons_done: 0 });
@@ -701,7 +729,7 @@
         '</div></section>';
 
       var stats = '<div class="cpstats">' +
-        '<div><b>' + money(c.price_pence) + '</b><span>Per lesson</span></div>' +
+        '<div><b>' + (c.offers_single || !c.offers_free ? money(c.price_pence) : 'Free') + '</b><span>' + (c.offers_single || !c.offers_free ? 'Per lesson' : 'Trial lesson') + '</span></div>' +
         '<div><b>' + (c.lessons_done || 0) + '</b><span>Lesson' + (c.lessons_done === 1 ? '' : 's') + ' given</span></div>' +
         '<div><b>' + (c.review_count ? fmtRating(c.avg_rating) + ' ' + I.star(true, 20) : 'New') + '</b><span>' + (c.review_count ? c.review_count + ' rating' + (c.review_count === 1 ? '' : 's') : 'No ratings yet') + '</span></div></div>';
 
@@ -709,6 +737,11 @@
         (c.intro_video_url ? '<div class="media16"><video controls playsinline preload="metadata" src="' + esc(c.intro_video_url) + '#t=0.1"' + (c.photo_url ? ' poster="' + esc(c.photo_url) + '"' : '') + '></video></div>' : '') +
         (c.bio ? '<p class="bio" id="bio">' + esc(c.bio) + '</p><button class="link more" id="more" hidden>Read more</button>' : '') + '</section>' : '';
 
+      var opts = [];
+      if (c.offers_free) opts.push('<div class="lopt"><div><b>Free trial lesson</b><span>One per player. Send a clip and ' + esc(fn) + ' will show you how they coach.</span></div><em>Free</em></div>');
+      if (c.offers_single) opts.push('<div class="lopt"><div><b>Single lesson</b><span>Up to 3 clips and a personal video reply with drills.</span></div><em>' + money(c.price_pence) + '</em></div>');
+      if (c.offers_monthly && c.monthly_price_pence) opts.push('<div class="lopt"><div><b>Monthly plan <i class="soon">Coming soon</i></b><span>Up to ' + c.monthly_videos_per_week + ' lesson' + (c.monthly_videos_per_week == 1 ? '' : 's') + ' a week with ' + esc(fn) + '.</span></div><em>' + money(c.monthly_price_pence) + '<small>/month</small></em></div>');
+      var lessonsSec = opts.length ? '<section class="cpsec"><div class="lab">Lessons</div><div class="lopts">' + opts.join('') + '</div></section>' : '';
       var specs = (c.specialities || []).length ? '<section class="cpsec"><div class="lab">Specialities</div><ul class="ticks">' +
         c.specialities.map(function (x) { return '<li>' + tickList + esc(x) + '</li>'; }).join('') + '</ul></section>' : '';
 
@@ -727,19 +760,21 @@
         ? '<div id="revs">' + reviews.slice(0, shown).map(reviewHtml).join('') + '</div>' + (reviews.length > shown ? '<button class="btn sm" id="allrevs" style="align-self:flex-start">Show all ' + reviews.length + ' reviews</button>' : '')
         : '<p class="muted">No reviews yet. Be the first to book a lesson with ' + esc(fn) + '.</p>') + '</section>';
 
-      var bar = canBook
-        ? '<div class="cpbar"><div class="price"><b>' + money(c.price_pence) + '</b><span>per lesson</span></div><a class="btn acc big" href="' + bookHref + '">Book a lesson</a></div>'
-        : (isMe ? '<div class="cpbar"><div class="price"><b>Your profile</b><span>' + (preview ? 'Only you can see it until approved' : 'This is what players see') + '</span></div><a class="btn acc" href="#/profile">Edit profile</a></div>' : '');
+      var bookable = c.offers_single || (c.offers_free && freeOk);
+      var bar = canBook && bookable
+        ? '<div class="cpbar"><div class="price">' + (c.offers_free && freeOk ? '<b>Free trial</b><span>' + (c.offers_single ? 'then ' + money(c.price_pence) + ' per lesson' : 'one per player') + '</span>' : '<b>' + money(c.price_pence) + '</b><span>per lesson</span>') + '</div><a class="btn acc big" href="' + bookHref + '">' + (c.offers_free && freeOk ? 'Try a free lesson' : 'Book a lesson') + '</a></div>'
+        : (isMe ? '<div class="cpbar"><div class="price"><b>Your profile</b><span>' + (preview ? 'Only you can see it until approved' : 'This is what players see') + '</span></div><button class="btn" id="share">Copy link</button><a class="btn acc" href="#/profile">Edit</a></div>' : '');
 
       render(shell('coaches',
         (preview ? '<div class="notice warn">' + I.info + '<span>Preview. Your profile is not public yet. We will approve it once it is complete.</span></div>' : '') +
-        '<div class="cpwrap">' + hero + stats + about + specs + playing + revs + '</div>' + (bar ? bar + '<div style="height:70px"></div>' : ''), { narrow: true }));
+        '<div class="cpwrap">' + hero + stats + lessonsSec + about + specs + playing + revs + '</div>' + (bar ? bar + '<div style="height:70px"></div>' : ''), { narrow: true }));
 
       var bio = $('#bio'), more = $('#more');
       if (bio && more && bio.scrollHeight > bio.clientHeight + 4) {
         more.hidden = false;
         more.onclick = function () { var open = bio.classList.toggle('open'); more.textContent = open ? 'Show less' : 'Read more'; };
       }
+      if ($('#share')) $('#share').onclick = function () { shareProfile(c.id, c.full_name); };
       if ($('#allrevs')) $('#allrevs').onclick = function () { $('#revs').innerHTML = reviews.map(reviewHtml).join(''); this.remove(); };
     }).catch(function (e) { if (t === navToken) failed('coaches', e); });
   }
@@ -751,11 +786,16 @@
     if (me.role !== 'player') { render(shell('home', '<div class="empty"><h2>Coach accounts cannot book lessons</h2><p class="muted">Make a separate player account to try it as a player.</p></div>')); return; }
     var t = ++navToken;
     loading('coaches');
-    rest('coach_cards?select=*&id=eq.' + encodeURIComponent(id)).then(function (r) {
+    Promise.all([rest('coach_cards?select=*&id=eq.' + encodeURIComponent(id)), rpc('free_lesson_available', { p_coach: id }).catch(function () { return false; })]).then(function (res) {
       if (t !== navToken) return;
-      var c = r && r[0];
-      if (!c) { render(shell('coaches', '<div class="empty"><h2>This coach is not taking lessons right now</h2><a class="btn acc" href="#/coaches">See all coaches</a></div>')); return; }
+      var c = res[0] && res[0][0], freeOk = !!res[1];
+      if (!c || !(c.offers_single || (c.offers_free && freeOk))) { render(shell('coaches', '<div class="empty"><h2>' + (c && c.offers_free && !c.offers_single ? 'You have already had your free lesson with ' + esc(firstName(c.full_name)) : 'This coach is not taking lessons right now') + '</h2><a class="btn acc" href="#/coaches">See all coaches</a></div>')); return; }
       var fn = firstName(c.full_name);
+      var kind = c.offers_free && freeOk ? 'free' : 'single';
+      var kinds = [];
+      if (c.offers_free && freeOk) kinds.push(['free', 'Free trial lesson', 'Free', 'One per player. ' + fn + ' will look at your clip and show you how they coach.']);
+      if (c.offers_single) kinds.push(['single', 'Single lesson', money(c.price_pence), 'A personal video reply with drills to practise.']);
+      if (c.offers_monthly && c.monthly_price_pence) kinds.push(['monthly', 'Monthly plan', money(c.monthly_price_pence) + '/month', 'Coming soon, once card payments are live.']);
       var p = me.player || {};
       var gameMissing = p.level == null || !p.side;
       render(shell('coaches',
@@ -763,6 +803,8 @@
         '<div><h1>Your lesson with ' + esc(fn) + '</h1><p class="muted" style="margin-top:6px">Send a clip of your game and tell ' + esc(fn) + ' what you want help with.</p></div>' +
         (gameMissing ? '<div class="notice warn">' + I.info + '<span>Add your level and court side so ' + esc(fn) + ' can coach your game. <a href="#/profile">Add your game</a></span></div>' : '') +
         '<form class="form" id="f" novalidate>' +
+        (kinds.length > 1 ? '<div class="f" style="display:flex;flex-direction:column;gap:10px;font-weight:700">Choose your lesson<div class="lopts" id="kinds">' + kinds.map(function (k) {
+          return '<button type="button" class="lopt pick' + (k[0] === kind ? ' on' : '') + '" data-kind="' + k[0] + '"' + (k[0] === 'monthly' ? ' disabled' : '') + '><div><b>' + esc(k[1]) + '</b><span>' + esc(k[3]) + '</span></div><em>' + k[2] + '</em></button>'; }).join('') + '</div></div>' : '') +
         '<label class="f">What do you want help with?<input class="in" name="topic" maxlength="140" placeholder="e.g. My bandeja keeps landing short" required></label>' +
         '<div class="chips" id="quick">' + WORK_ON.slice(0, 8).map(function (w) { return '<button type="button" class="chip">' + esc(w) + '</button>'; }).join('') + '</div>' +
         '<label class="f">Message to ' + esc(fn) + ' <span class="hint">What happens in the clip, what you have tried, how it feels</span><textarea class="in" name="body" maxlength="5000" rows="5"></textarea></label>' +
@@ -770,10 +812,21 @@
         '<div class="files" id="files"></div>' +
         '<button type="button" class="btn" id="add" style="align-self:flex-start">+ Add video</button>' +
         '<input type="file" id="pick" accept="video/*" multiple hidden></div>' +
-        '<div class="panel" style="display:flex;flex-direction:column;gap:6px"><div style="display:flex;justify-content:space-between;font-weight:700;font-size:18px"><span>Video lesson with ' + esc(fn) + '</span><span>' + money(c.price_pence) + '</span></div>' +
-        (C.paymentsEnabled ? '<p class="muted small">You pay securely by card on the next step.</p>' : '<p class="small" style="color:var(--acc);font-weight:700">Test mode: card payments are not switched on yet, so this lesson is free.</p>') + '</div>' +
+        '<div class="panel" style="display:flex;flex-direction:column;gap:6px"><div style="display:flex;justify-content:space-between;font-weight:700;font-size:18px"><span id="sumname"></span><span id="sumprice"></span></div>' +
+        '<p class="small" id="sumnote"></p></div>' +
         '<p class="err" id="e" hidden></p>' +
         '<button class="btn acc big block" type="submit" id="send">Send to ' + esc(fn) + '</button></form>', { narrow: true }));
+      function summary() {
+        var free = kind === 'free';
+        $('#sumname').textContent = (free ? 'Free trial lesson' : 'Video lesson') + ' with ' + fn;
+        $('#sumprice').textContent = free ? 'Free' : money(c.price_pence);
+        var n = $('#sumnote');
+        if (free) { n.textContent = 'No payment needed. You can have one free lesson with each coach.'; n.style.color = ''; n.className = 'small muted'; }
+        else if (C.paymentsEnabled) { n.textContent = 'You pay securely by card on the next step.'; n.className = 'small muted'; }
+        else { n.textContent = 'Test mode: card payments are not switched on yet, so this lesson is free.'; n.className = 'small'; n.style.color = 'var(--acc)'; n.style.fontWeight = '700'; }
+      }
+      $$('#kinds .lopt').forEach(function (b) { b.onclick = function () { kind = b.getAttribute('data-kind'); $$('#kinds .lopt').forEach(function (x) { x.classList.toggle('on', x === b); }); summary(); }; });
+      summary();
       var picker = pickVideos($('#files'), [], 3);
       $('#add').onclick = function () { $('#pick').click(); };
       $('#pick').onchange = function (ev) { picker.add(ev.target.files); ev.target.value = ''; };
@@ -789,7 +842,7 @@
         b.disabled = true; b.textContent = 'Uploading videos…'; $('#add').disabled = true;
         picker.uploadAll().then(function (paths) {
           b.textContent = 'Sending…';
-          return rpc('book_lesson', { p_coach: c.id, p_topic: topic, p_body: f.body.value, p_videos: paths });
+          return rpc('book_lesson', { p_coach: c.id, p_topic: topic, p_body: f.body.value, p_videos: paths, p_kind: kind });
         }).then(function () {
           toast('Sent to ' + fn + '. You will see the reply in My lessons.');
           go('#/space/' + c.id);
@@ -841,7 +894,7 @@
             '<span class="avatar">' + esc(initials(l.player_name)) + '</span>' +
             '<span class="main"><span style="display:flex;gap:10px;align-items:baseline;flex-wrap:wrap"><b style="font-size:17px">' + esc(l.player_name) + '</b><span class="muted small">' + esc(game) + '</span></span>' +
             '<span class="t" style="' + (l.status === 'new' ? 'font-weight:700' : '') + '">' + esc(l.topic) + '</span>' +
-            '<span class="muted small">Lesson ' + l.nth + ' with you · ' + l.video_count + ' video' + (l.video_count == 1 ? '' : 's') + '</span></span>' +
+            '<span class="muted small">' + (l.kind === 'free' ? '<span class="freetag">Free trial</span> ' : '') + 'Lesson ' + l.nth + ' with you · ' + l.video_count + ' video' + (l.video_count == 1 ? '' : 's') + '</span></span>' +
             '<span class="side"><span class="muted small">' + when(l.created_at) + '</span>' + statusPill(l.status, 'coach', l) + '</span></a>';
         }).join('') + '</div>'
           : '<div class="panel empty"><h3>' + (feed.length ? 'Nothing here' : 'No lessons yet') + '</h3><p class="muted">' +
@@ -940,7 +993,7 @@
 
     var thread = lessons.map(function (l, i) {
       var cur = l === last;
-      var head = '<div class="divider' + (cur ? ' cur' : '') + '" id="l-' + l.id + '">Lesson ' + (i + 1) + ' · ' + esc(l.topic) + ' · ' + shortDate(l.created_at) + '</div>';
+      var head = '<div class="divider' + (cur ? ' cur' : '') + '" id="l-' + l.id + '">' + (l.kind === 'free' ? 'Free trial' : 'Lesson ' + (i + 1)) + ' · ' + esc(l.topic) + ' · ' + shortDate(l.created_at) + '</div>';
       var shownFollow = false;
       var msgs = (l.messages || []).map(function (m) {
         var sep = '';
@@ -1189,7 +1242,8 @@
     var c = me.coach || {};
     render(shell('profile',
       (!c.approved ? approvalNotice() : '<div class="notice accb">' + I.lock.replace('stroke="#D7F23A"', 'stroke="#D7F23A"') + '<span><b>You are live.</b> Players can find and book you. <a href="#/coach/' + me.id + '">View your public profile</a></span></div>') +
-      '<div style="display:flex;justify-content:space-between;align-items:flex-end;gap:12px;flex-wrap:wrap"><h1>My coach profile</h1><a class="btn sm" href="#/coach/' + me.id + '">' + (c.approved ? 'View public profile' : 'Preview') + '</a></div>' +
+      '<div style="display:flex;justify-content:space-between;align-items:flex-end;gap:12px;flex-wrap:wrap"><h1>My coach profile</h1><div style="display:flex;gap:8px;flex-wrap:wrap"><button type="button" class="btn sm acc" id="share">Copy profile link</button><a class="btn sm" href="#/coach/' + me.id + '">' + (c.approved ? 'View public profile' : 'Preview') + '</a></div></div>' +
+      '<p class="muted small" style="margin-top:-24px">Share your link on Instagram so your own players can book you.' + (c.approved ? '' : ' It works once we approve your profile.') + '</p>' +
       '<form class="form" id="f">' +
       '<div class="row2"><div class="f" style="display:flex;flex-direction:column;gap:10px;font-weight:700">Photo <span class="hint">A clear, friendly photo. Square or portrait.</span>' +
       '<div style="display:flex;gap:14px;align-items:center"><div style="width:96px">' + photoBox(me.full_name, me.id, c.photo_url, '1 / 1') + '</div>' +
@@ -1203,8 +1257,14 @@
       '<div class="row2"><label class="f">Home club<input class="in" name="club" maxlength="120" value="' + esc(c.club) + '"></label>' +
       '<label class="f">City<input class="in" name="city" maxlength="80" value="' + esc(c.city) + '"></label></div>' +
       '<label class="f">About you<textarea class="in" name="bio" maxlength="2000" rows="6" placeholder="Your padel background and how you coach">' + esc(c.bio) + '</textarea></label>' +
-      '<label class="f">Price per video lesson (£) <span class="hint">You receive ' + (100 - (C.platformFeePercent || 20)) + '%. Padelent keeps ' + (C.platformFeePercent || 20) + '%.</span><input class="in" name="price" type="number" inputmode="decimal" min="5" max="1000" step="1" value="' + (c.price_pence ? c.price_pence / 100 : 30) + '" style="max-width:200px"></label>' +
-      '<p class="muted small" id="youget" style="margin-top:-12px"></p>' +
+      '<div class="f" style="display:flex;flex-direction:column;gap:10px;font-weight:700">Lesson options <span class="hint">Switch on what you offer. You receive ' + (100 - (C.platformFeePercent || 20)) + '% of paid lessons, Padelent keeps ' + (C.platformFeePercent || 20) + '%.</span>' +
+        '<div class="lset"><label class="tg"><input type="checkbox" name="offers_free"' + (c.offers_free ? ' checked' : '') + '><span></span><div><b>Free trial lesson</b><small>One free lesson per player. A great way to win new players.</small></div></label></div>' +
+        '<div class="lset"><label class="tg"><input type="checkbox" name="offers_single"' + (c.offers_single !== false ? ' checked' : '') + '><span></span><div><b>Single lesson</b><small>Players pay per lesson.</small></div></label>' +
+          '<div class="lsub"><span>£</span><input class="in" name="price" type="number" inputmode="decimal" min="5" max="1000" step="1" value="' + (c.price_pence ? c.price_pence / 100 : 30) + '"><span class="muted small" id="youget"></span></div></div>' +
+        '<div class="lset"><label class="tg"><input type="checkbox" name="offers_monthly"' + (c.offers_monthly ? ' checked' : '') + '><span></span><div><b>Monthly plan <i class="soon">Coming soon</i></b><small>A monthly price for regular players. Players can book it once card payments go live.</small></div></label>' +
+          '<div class="lsub"><span>£</span><input class="in" name="monthly_price" type="number" inputmode="decimal" min="5" max="1000" step="1" value="' + (c.monthly_price_pence ? c.monthly_price_pence / 100 : '') + '" placeholder="e.g. 99"><span class="muted small">a month, up to</span>' +
+          '<select class="in" name="monthly_vpw" style="width:auto">' + [1, 2, 3, 4, 5, 7].map(function (n) { return '<option value="' + n + '"' + (n === (c.monthly_videos_per_week || 1) ? ' selected' : '') + '>' + n + '</option>'; }).join('') + '</select><span class="muted small">lessons a week</span></div></div>' +
+      '</div>' +
       '<div class="f" style="display:flex;flex-direction:column;gap:10px;font-weight:700">Specialities' + multiBtns('specialities', SPECIALITIES, c.specialities) + '</div>' +
       '<div class="row2"><div class="f" style="display:flex;flex-direction:column;gap:10px;font-weight:700">Plays with' + segBtns('hand', [['right', 'Right hand'], ['left', 'Left hand']], c.hand) + '</div>' +
       '<div class="f" style="display:flex;flex-direction:column;gap:10px;font-weight:700">Court side' + segBtns('side', [['drive', 'Drive'], ['reves', 'Revés'], ['both', 'Both']], c.side) + '</div></div>' +
@@ -1216,7 +1276,8 @@
       '<p class="err" id="e" hidden></p><button class="btn acc big" type="submit" style="align-self:flex-end">Save profile</button></form>' + logoutBtn(), { narrow: true }));
     wireChips($('#f')); wireLogout();
     var f = $('#f');
-    function youget() { var v = Math.round(parseFloat(f.price.value) * 100) || 0; $('#youget').textContent = v ? 'You receive ' + money(Math.round(v * (100 - (C.platformFeePercent || 20)) / 100)) + ' per lesson.' : ''; }
+    function youget() { var v = Math.round(parseFloat(f.price.value) * 100) || 0; $('#youget').textContent = v ? 'per lesson · you receive ' + money(Math.round(v * (100 - (C.platformFeePercent || 20)) / 100)) : ''; }
+    $('#share').onclick = function () { shareProfile(me.id, me.full_name); };
     f.price.oninput = youget; youget();
     $('#photoBtn').onclick = function () { $('#photo').click(); };
     $('#photo').onchange = function (ev) {
@@ -1248,11 +1309,16 @@
       ev.preventDefault();
       var b = $('button[type=submit]', f), e = $('#e');
       var price = Math.round(parseFloat(f.price.value) * 100);
+      var mprice = Math.round(parseFloat(f.monthly_price.value) * 100);
+      var oFree = f.offers_free.checked, oSingle = f.offers_single.checked, oMonthly = f.offers_monthly.checked;
       e.hidden = true;
-      if (!(price >= 500 && price <= 100000)) { e.textContent = 'Set a price between £5 and £1,000.'; e.hidden = false; return; }
+      if (!oFree && !oSingle && !oMonthly) { e.textContent = 'Switch on at least one lesson option.'; e.hidden = false; return; }
+      if (!(price >= 500 && price <= 100000)) { e.textContent = 'Set a single lesson price between £5 and £1,000.'; e.hidden = false; return; }
+      if (oMonthly && !(mprice >= 500 && mprice <= 100000)) { e.textContent = 'Set a monthly price between £5 and £1,000.'; e.hidden = false; return; }
       b.disabled = true;
       rpc('save_my_profile', { p: { full_name: f.full_name.value, headline: f.headline.value.trim(), club: f.club.value.trim(), city: f.city.value.trim(),
-        bio: f.bio.value.trim(), price_pence: price, specialities: multiVal('specialities'), hand: segVal('hand'), side: segVal('side'),
+        bio: f.bio.value.trim(), price_pence: price, offers_free: oFree, offers_single: oSingle, offers_monthly: oMonthly,
+        monthly_price_pence: mprice >= 500 ? mprice : '', monthly_videos_per_week: Number(f.monthly_vpw.value) || 1, specialities: multiVal('specialities'), hand: segVal('hand'), side: segVal('side'),
         racket: f.racket.value.trim(), years_coaching: f.years_coaching.value, playing_level: f.playing_level.value.trim(),
         qualifications: f.qualifications.value.trim(), languages: f.languages.value.trim() } })
         .then(function (p2) { me = p2; toast('Profile saved'); coachProfileForm(); })
@@ -1301,9 +1367,10 @@
           '<div class="muted small">' + esc([c.club, c.city].filter(Boolean).join(', ') || 'No club yet') + ' · ' + money(c.price_pence) + ' · joined ' + shortDate(c.created_at) + '</div>' +
           (c.qualifications ? '<div class="small">' + esc(c.qualifications) + '</div>' : '') +
           (c.bio ? '<div class="small muted" style="margin-top:4px;max-height:4.5em;overflow:hidden">' + esc(c.bio) + '</div>' : '<div class="small" style="color:var(--amber)">No bio yet</div>') + '</div>' +
-          '<button class="btn sm ' + (c.approved ? '' : 'acc') + '" data-approve="' + c.id + '" data-to="' + (!c.approved) + '">' + (c.approved ? 'Hide' : 'Approve') + '</button></div>';
+          '<div style="display:flex;flex-direction:column;gap:8px"><button class="btn sm ' + (c.approved ? '' : 'acc') + '" data-approve="' + c.id + '" data-to="' + (!c.approved) + '">' + (c.approved ? 'Hide' : 'Approve') + '</button>' +
+          '<a class="btn sm" href="#/admin/chat/' + c.id + '">Message</a></div></div>';
       }
-      render(shell('admin', '<div><h1>Admin</h1><p class="muted" style="margin-top:6px">Only you can see this page.</p></div>' +
+      render(shell('admin', '<div><h1>Admin</h1><p class="muted" style="margin-top:6px">Only you can see this page.</p></div>' + adminTabs('overview') +
         '<div class="stats"><div class="stat"><div class="muted small">Players</div><div class="v">' + a.players + '</div></div>' +
         '<div class="stat"><div class="muted small">Coaches live</div><div class="v">' + live.length + '</div></div>' +
         '<div class="stat"><div class="muted small">Lessons (done)</div><div class="v">' + a.lessons + ' <span class="muted small">(' + a.lessons_done + ')</span></div></div>' +
@@ -1319,6 +1386,113 @@
         };
       });
     }).catch(function (e) { if (t === navToken) failed('admin', e); });
+  }
+
+
+  function adminTabs(on) {
+    return '<div class="tabs"><a href="#/admin" class="' + (on === 'overview' ? 'on' : '') + '">Overview</a>' +
+      '<a href="#/admin/messages" class="' + (on === 'messages' ? 'on' : '') + '">Messages<span class="c" data-inbox style="display:none"></span></a></div>';
+  }
+
+  function pageAdminMessages() {
+    if (!needPlayer()) return;
+    if (!me.is_admin) return go('#/');
+    var t = ++navToken;
+    loading('admin');
+    rpc('admin_conversations').then(function (a) {
+      if (t !== navToken) return;
+      state.inbox = a.unread || 0;
+      var aud = 'coaches';
+      var counts = { coaches: a.counts.coaches, players: a.counts.players, everyone: a.counts.coaches + a.counts.players };
+      render(shell('admin', '<div><h1>Admin</h1></div>' + adminTabs('messages') +
+        '<form class="panel composer" id="bf"><h3>Send a broadcast</h3>' +
+        '<p class="muted small">Goes to everyone you pick as a message from you, plus an email. Replies come back here as private chats.</p>' +
+        '<div class="chips" id="aud">' + [['coaches', 'Coaches'], ['players', 'Players'], ['everyone', 'Everyone']].map(function (x) {
+          return '<button type="button" class="chip' + (x[0] === aud ? ' on' : '') + '" data-aud="' + x[0] + '">' + x[1] + ' (' + counts[x[0]] + ')</button>'; }).join('') + '</div>' +
+        '<textarea class="in" name="body" rows="7" maxlength="5000" placeholder="Hey guys, hope you are getting on well this week…"></textarea>' +
+        '<p class="err" id="e" hidden></p><div class="acts" style="justify-content:flex-end"><button class="btn acc" type="submit">Send broadcast</button></div></form>' +
+        '<section class="section"><h2>Conversations</h2>' + (a.threads.length ? '<div class="list">' + a.threads.map(function (th) {
+          return '<a class="lrow' + (th.unread > 0 ? ' new' : '') + '" href="#/admin/chat/' + th.user_id + '"><span class="avatar">' + esc(initials(th.full_name)) + '</span>' +
+            '<span class="main"><span style="display:flex;gap:10px;align-items:baseline;flex-wrap:wrap"><b>' + esc(th.full_name || th.email) + '</b><span class="muted small">' + (th.role === 'coach' ? 'Coach' : 'Player') + '</span></span>' +
+            '<span class="t muted">' + esc(th.last_body) + '</span></span>' +
+            '<span class="side"><span class="muted small">' + when(th.last_at) + '</span>' + (th.unread > 0 ? '<span class="st open fresh"><i></i>' + th.unread + ' new</span>' : '') + '</span></a>';
+        }).join('') + '</div>' : '<div class="panel muted">No replies yet. When someone replies to a broadcast, it shows up here.</div>') + '</section>' +
+        (a.broadcasts.length ? '<section class="section"><h2>Recent broadcasts</h2><div class="panel">' + a.broadcasts.map(function (b) {
+          return '<div class="rv"><div class="muted small">' + when(b.created_at) + ' · to ' + b.audience + ' · ' + b.recipients + ' people</div><p style="white-space:pre-wrap">' + esc(b.body) + '</p></div>'; }).join('') + '</div></section>' : '')));
+      $$('#aud .chip').forEach(function (b) { b.onclick = function () { aud = b.getAttribute('data-aud'); $$('#aud .chip').forEach(function (x) { x.classList.toggle('on', x === b); }); }; });
+      $('#bf').onsubmit = function (ev) {
+        ev.preventDefault();
+        var body = this.body.value.trim(), e = $('#e');
+        e.hidden = true;
+        if (!body) { e.textContent = 'Write a message first.'; e.hidden = false; return; }
+        if (!confirm('Send this to ' + counts[aud] + ' ' + (aud === 'everyone' ? 'people' : aud) + '? They will also get it by email.')) return;
+        var btn = $('button[type=submit]', this); btn.disabled = true;
+        rpc('admin_broadcast', { p_audience: aud, p_body: body })
+          .then(function (n) { toast('Sent to ' + n + ' ' + (n === 1 ? 'person' : 'people')); pageAdminMessages(); })
+          .catch(function (err) { e.textContent = err.message; e.hidden = false; btn.disabled = false; });
+      };
+    }).catch(function (e) { if (t === navToken) failed('admin', e); });
+  }
+
+  function chatHtml(msgs, mineFn, otherName, otherIni, meIsAdmin) {
+    return msgs.map(function (m) {
+      var mine = mineFn(m);
+      var adminSide = meIsAdmin ? mine : !mine;
+      return '<div class="msg' + (adminSide ? ' coach' : '') + '"><span class="avatar' + (adminSide ? ' acc' : '') + '">' + (adminSide ? 'P' : esc(otherIni)) + '</span>' +
+        '<div class="bub"><div class="who"><b>' + esc(mine ? 'You' : otherName) + '</b><span class="muted small">' + when(m.created_at) + (m.broadcast ? ' · sent to everyone' : '') + '</span></div>' +
+        '<div class="body">' + esc(m.body) + '</div></div></div>';
+    }).join('');
+  }
+
+  function pageAdminChat(userId) {
+    if (!needPlayer()) return;
+    if (!me.is_admin) return go('#/');
+    var t = ++navToken;
+    loading('admin');
+    rpc('admin_thread', { p_user: userId }).then(function (th) {
+      if (t !== navToken) return;
+      if (!th) { render(shell('admin', '<div class="empty"><h2>Not found</h2><a class="btn acc" href="#/admin/messages">Back</a></div>')); return; }
+      refreshInbox();
+      render(shell('admin', '<a class="back" href="#/admin/messages">‹ Messages</a>' +
+        '<div><h1 style="font-size:clamp(26px,4vw,36px)">' + esc(th.full_name || th.email) + '</h1><div class="muted">' + (th.role === 'coach' ? 'Coach' : 'Player') + ' · ' + esc(th.email) + (th.role === 'coach' ? ' · <a href="#/coach/' + th.user_id + '">View profile</a>' : '') + '</div></div>' +
+        '<section class="thread">' + (th.messages.length ? chatHtml(th.messages, function (m) { return m.from_admin; }, th.full_name, initials(th.full_name), true) : '<div class="panel muted">No messages yet. Say hello below.</div>') +
+        '<form class="panel composer" id="cf"><h3>Message ' + esc(firstName(th.full_name) || 'them') + '</h3><textarea class="in" name="body" rows="4" maxlength="5000"></textarea>' +
+        '<p class="err" id="e" hidden></p><div class="acts" style="justify-content:flex-end"><button class="btn acc" type="submit">Send</button></div></form></section>', { narrow: true }));
+      var last = $$('.msg').pop(); if (last) last.scrollIntoView({ block: 'center' });
+      $('#cf').onsubmit = function (ev) {
+        ev.preventDefault();
+        var body = this.body.value.trim(), e = $('#e'); e.hidden = true;
+        if (!body) { e.textContent = 'Write a message first.'; e.hidden = false; return; }
+        var btn = $('button', this); btn.disabled = true;
+        rpc('admin_send', { p_user: userId, p_body: body }).then(function () { toast('Sent'); pageAdminChat(userId); })
+          .catch(function (err) { e.textContent = err.message; e.hidden = false; btn.disabled = false; });
+      };
+    }).catch(function (e) { if (t === navToken) failed('admin', e); });
+  }
+
+  function pageInbox() {
+    if (!needPlayer()) return;
+    if (me.is_admin) return go('#/admin/messages');
+    var t = ++navToken;
+    loading('');
+    rpc('my_inbox').then(function (ib) {
+      if (t !== navToken) return;
+      state.inbox = 0; updateBadges();
+      var an = (ib && ib.admin_name) || 'Padelent';
+      render(shell('', '<div><h1>Messages</h1><p class="muted" style="margin-top:6px">Your chat with ' + esc(an) + ' from the Padelent team. Lesson chats with coaches are in ' + (me.role === 'coach' ? 'Lessons' : 'My lessons') + '.</p></div>' +
+        '<section class="thread">' + (ib.messages.length ? chatHtml(ib.messages, function (m) { return m.mine; }, an + ' · Padelent', 'P', false) : '<div class="panel muted">No messages yet. If you need anything, write to us below.</div>') +
+        '<form class="panel composer" id="cf"><h3>Message ' + esc(an) + '</h3><textarea class="in" name="body" rows="4" maxlength="5000" placeholder="Questions, ideas or feedback"></textarea>' +
+        '<p class="err" id="e" hidden></p><div class="acts" style="justify-content:flex-end"><button class="btn acc" type="submit">Send</button></div></form></section>', { narrow: true }));
+      var last = $$('.msg').pop(); if (last) last.scrollIntoView({ block: 'center' });
+      $('#cf').onsubmit = function (ev) {
+        ev.preventDefault();
+        var body = this.body.value.trim(), e = $('#e'); e.hidden = true;
+        if (!body) { e.textContent = 'Write a message first.'; e.hidden = false; return; }
+        var btn = $('button', this); btn.disabled = true;
+        rpc('send_inbox_message', { p_body: body }).then(function () { toast('Sent to ' + an); pageInbox(); })
+          .catch(function (err) { e.textContent = err.message; e.hidden = false; btn.disabled = false; });
+      };
+    }).catch(function (e) { if (t === navToken) failed('', e); });
   }
 
   /* ================================================================ router */
@@ -1345,6 +1519,9 @@
     if (path === '#/profile') return pageProfile();
     if (path === '#/earnings') return pageEarnings();
     if (path === '#/admin') return pageAdmin();
+    if (path === '#/admin/messages') return pageAdminMessages();
+    if ((m = /^#\/admin\/chat\/([0-9a-f-]{36})$/.exec(path))) return pageAdminChat(m[1]);
+    if (path === '#/inbox') return pageInbox();
     go('#/');
   }
 
@@ -1372,6 +1549,7 @@
       window.addEventListener('hashchange', route);
       route();
       refreshNewCount();
+      refreshInbox();
     });
   }
   boot();
