@@ -279,7 +279,7 @@
   function statusPill(s, forRole) {
     var open = s !== 'done';
     var label = forRole === 'coach'
-      ? ({ 'new': 'New', awaiting: 'Open', done: 'Done' }[s] || s)
+      ? ({ 'new': 'New', awaiting: 'Awaiting your reply', done: 'Done' }[s] || s)
       : (open ? 'Open' : 'Done');
     return '<span class="st ' + (open ? 'open' : 'done') + (s === 'new' && forRole === 'coach' ? ' fresh' : '') + '"><i></i>' + label + '</span>';
   }
@@ -720,10 +720,10 @@
         (!c.approved ? approvalNotice() : '') +
         '<div><h1>Lessons</h1><p class="muted" style="margin-top:6px">Newest first. Tap a player to open your lessons with them.</p></div>' +
         '<div class="stats"><div class="stat"><div class="muted small">New lessons</div><div class="v">' + n['new'] + '</div></div>' +
-        '<div class="stat"><div class="muted small">Open lessons</div><div class="v">' + n.awaiting + '</div></div>' +
+        '<div class="stat"><div class="muted small">Awaiting your reply</div><div class="v">' + n.awaiting + '</div></div>' +
         '<div class="stat"><div class="muted small">Done this month</div><div class="v">' + doneMonth.length + '</div></div>' +
         '<div class="stat"><div class="muted small">Earned this month</div><div class="v">' + money(earned) + '</div></div></div>' +
-        '<div class="tabs" role="tablist">' + [['all', 'All'], ['new', 'New'], ['awaiting', 'Open'], ['done', 'Done']].map(function (x) {
+        '<div class="tabs" role="tablist">' + [['all', 'All'], ['new', 'New'], ['awaiting', 'Awaiting your reply'], ['done', 'Done']].map(function (x) {
           return '<button role="tab" data-tab="' + x[0] + '" class="' + (x[0] === tab ? 'on' : '') + '">' + x[1] + '<span class="c">' + (n[x[0]] || 0) + '</span></button>'; }).join('') + '</div>' +
         '<div id="feed"></div>'));
       function draw() {
