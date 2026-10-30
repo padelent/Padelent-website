@@ -575,10 +575,8 @@
         ['Coaching for', c.years_coaching != null && c.years_coaching !== '' ? c.years_coaching + ' year' + (c.years_coaching == 1 ? '' : 's') : ''],
         ['Qualifications', c.qualifications], ['Languages', c.languages]]
         .filter(function (f) { return f[1]; });
-      var ig = String(c.instagram || '').replace(/^@/, '');
       var pin = '<svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 21s-7-6.2-7-11.5A7 7 0 0119 9.5C19 14.8 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.5"/></svg>';
       var tickList = '<svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#D7F23A" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>';
-      var igIcon = '<svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#D7F23A" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="5"/><circle cx="12" cy="12" r="4"/><circle cx="17.5" cy="6.5" r="1.2" fill="#D7F23A" stroke="none"/></svg>';
       var avatarIn = c.photo_url ? '<img src="' + esc(c.photo_url) + '" alt="">' : '<span>' + esc(initials(c.full_name)) + '</span>';
       var shown = 5;
 
@@ -610,7 +608,6 @@
       var playing = facts.length ? '<section class="cpsec"><div class="lab">Playing profile</div><div>' +
         facts.map(function (f) { return '<div class="kv"><span class="muted">' + f[0] + '</span><b>' + esc(f[1]) + '</b></div>'; }).join('') + '</div></section>' : '';
 
-      var follow = ig ? '<section class="cpsec"><div class="lab">Follow me on</div><a class="ig" href="https://www.instagram.com/' + encodeURIComponent(ig) + '/" target="_blank" rel="noopener">' + igIcon + esc(ig) + '</a></section>' : '';
 
       function reviewHtml(rv) {
         return '<div class="rv"><div class="rv-top"><span class="avatar">' + esc(initials(rv.display_name)) + '</span>' +
@@ -629,7 +626,7 @@
 
       render(shell('coaches',
         (preview ? '<div class="notice warn">' + I.info + '<span>Preview. Your profile is not public yet. We will approve it once it is complete.</span></div>' : '') +
-        '<div class="cpwrap">' + hero + stats + about + specs + playing + follow + revs + '</div>' + (bar ? bar + '<div style="height:70px"></div>' : ''), { narrow: true }));
+        '<div class="cpwrap">' + hero + stats + about + specs + playing + revs + '</div>' + (bar ? bar + '<div style="height:70px"></div>' : ''), { narrow: true }));
 
       var bio = $('#bio'), more = $('#more');
       if (bio && more && bio.scrollHeight > bio.clientHeight + 4) {
@@ -1075,7 +1072,6 @@
       '<div class="row2"><label class="f">Playing level<input class="in" name="playing_level" maxlength="120" value="' + esc(c.playing_level) + '" placeholder="e.g. Former pro, Spanish circuit"></label>' +
       '<label class="f">Qualifications<input class="in" name="qualifications" maxlength="200" value="' + esc(c.qualifications) + '" placeholder="e.g. LTA Padel Coach Level 2"></label></div>' +
       '<label class="f">Languages<input class="in" name="languages" maxlength="120" value="' + esc(c.languages) + '" placeholder="e.g. English, Spanish"></label>' +
-      '<label class="f">Instagram <span class="hint">Your handle, shown on your profile</span><input class="in" name="instagram" maxlength="60" value="' + esc(c.instagram) + '" placeholder="e.g. martapadel" autocapitalize="off" autocorrect="off"></label>' +
       '<p class="err" id="e" hidden></p><button class="btn acc big" type="submit" style="align-self:flex-end">Save profile</button></form>' + logoutBtn(), { narrow: true }));
     wireChips($('#f')); wireLogout();
     var f = $('#f');
@@ -1112,8 +1108,7 @@
       rpc('save_my_profile', { p: { full_name: f.full_name.value, headline: f.headline.value.trim(), club: f.club.value.trim(), city: f.city.value.trim(),
         bio: f.bio.value.trim(), price_pence: price, specialities: multiVal('specialities'), hand: segVal('hand'), side: segVal('side'),
         racket: f.racket.value.trim(), years_coaching: f.years_coaching.value, playing_level: f.playing_level.value.trim(),
-        qualifications: f.qualifications.value.trim(), languages: f.languages.value.trim(),
-        instagram: f.instagram.value.trim().replace(/^https?:\/\/(www\.)?instagram\.com\//i, '').replace(/[\/?#].*$/, '').replace(/^@/, '') } })
+        qualifications: f.qualifications.value.trim(), languages: f.languages.value.trim() } })
         .then(function (p2) { me = p2; toast('Profile saved'); coachProfileForm(); })
         .catch(function (err) { e.textContent = err.message; e.hidden = false; b.disabled = false; });
     };

@@ -35,7 +35,6 @@ create table if not exists public.coaches (
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
-alter table public.coaches add column if not exists instagram text not null default '' check (char_length(instagram) <= 60);
 
 create table if not exists public.players (
   id uuid primary key references public.profiles(id) on delete cascade,
@@ -167,14 +166,17 @@ $$;
 
 -- ---------- Public coach list ------------------------------------------
 
-create or replace view public.coach_cards as
+-- (Rebuilt each time; also removes the old Instagram field.)
+drop view if exists public.coach_cards;
+alter table public.coaches drop column if exists instagram;
+
+create view public.coach_cards as
 select c.id, p.full_name, c.headline, c.club, c.city, c.bio, c.photo_url, c.intro_video_url,
        c.racket, c.hand, c.side, c.playing_level, c.years_coaching, c.qualifications, c.languages,
        c.specialities, c.price_pence, c.created_at,
        coalesce(r.avg_rating, 0)::float as avg_rating,
        coalesce(r.review_count, 0)::int as review_count,
-       coalesce(l.lessons_done, 0)::int as lessons_done,
-       c.instagram
+       coalesce(l.lessons_done, 0)::int as lessons_done
 from public.coaches c
 join public.profiles p on p.id = c.id
 left join (select coach_id, round(avg(rating)::numeric, 2) as avg_rating, count(*) as review_count
@@ -228,7 +230,6 @@ begin
       languages      = coalesce(p->>'languages', languages),
       specialities   = case when p ? 'specialities' then array(select jsonb_array_elements_text(p->'specialities')) else specialities end,
       price_pence    = coalesce((p->>'price_pence')::int, price_pence),
-      instagram      = left(coalesce(p->>'instagram', instagram), 60),
       updated_at     = now()
     where id = v_uid;
   else
