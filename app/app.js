@@ -286,9 +286,109 @@
     else { cls = 'open'; label = 'Open'; }
     return '<span class="st ' + cls + '"><i></i>' + label + '</span>';
   }
+
+  /* ---------- Video shrinking ----------
+     Big phone videos are re-saved at up to 720p before upload (like WhatsApp does),
+     so long coach replies fit and storage lasts. If the browser cannot do it, the
+     original file is used when it is small enough. */
+  var SHRINK_OVER = (C.shrinkOverMB != null ? C.shrinkOverMB : 20) * 1048576;
+  var MAX_IN_MB = 500;
+  var audioCtx = null;
+  function primeAudio() {   // call straight from a tap, so phones allow the sound to be copied
+    try {
+      var AC = window.AudioContext || window.webkitAudioContext;
+      if (!AC) return;
+      if (!audioCtx) audioCtx = new AC();
+      if (audioCtx.state === 'suspended') audioCtx.resume();
+    } catch (e) {}
+  }
+  function recorderType() {
+    if (!window.MediaRecorder || !HTMLCanvasElement.prototype.captureStream) return '';
+    var list = ['video/mp4;codecs=avc1.42E01E,mp4a.40.2', 'video/mp4', 'video/webm;codecs=vp9,opus', 'video/webm;codecs=vp8,opus', 'video/webm'];
+    for (var i = 0; i < list.length; i++) { try { if (MediaRecorder.isTypeSupported(list[i])) return list[i]; } catch (e) {} }
+    return '';
+  }
+  function canShrink() { return !!recorderType(); }
+  function audioFor(file) {
+    if (!audioCtx || file.size > 300 * 1048576) return Promise.resolve(null);
+    return file.arrayBuffer()
+      .then(function (buf) { return new Promise(function (res, rej) { audioCtx.decodeAudioData(buf, res, rej); }); })
+      .then(function (ab) {
+        var dest = audioCtx.createMediaStreamDestination();
+        return { track: dest.stream.getAudioTracks()[0], start: function () {
+          var src = audioCtx.createBufferSource(); src.buffer = ab; src.connect(dest); src.start(); return src; } };
+      })
+      .catch(function () { return null; });   // no sound track, or the phone cannot read it
+  }
+  function shrinkVideo(file, onProgress) {
+    return new Promise(function (resolve, reject) {
+      var mime = recorderType();
+      if (!mime) return reject(new Error('cannot-shrink'));
+      var url = URL.createObjectURL(file), v = document.createElement('video');
+      v.muted = true; v.playsInline = true; v.setAttribute('playsinline', ''); v.preload = 'auto';
+      v.style.cssText = 'position:fixed;left:-9999px;top:0;width:2px;height:2px;opacity:0';
+      document.body.appendChild(v);
+      var done = false, raf = 0, timer = 0, rec = null, src = null;
+      function cleanup() {
+        cancelAnimationFrame(raf); clearTimeout(timer);
+        try { if (src) src.stop(); } catch (e) {}
+        try { v.pause(); } catch (e) {}
+        v.removeAttribute('src'); v.remove(); URL.revokeObjectURL(url);
+      }
+      function fail(e) { if (done) return; done = true; try { if (rec && rec.state !== 'inactive') rec.stop(); } catch (x) {} cleanup(); reject(e instanceof Error ? e : new Error('shrink-failed')); }
+      v.onerror = function () { fail(new Error('read-failed')); };
+      v.onloadedmetadata = function () {
+        var dur = v.duration, w = v.videoWidth, h = v.videoHeight;
+        if (!isFinite(dur) || dur <= 0 || !w || !h) return fail(new Error('no-video'));
+        var scale = Math.min(1, 1280 / Math.max(w, h));
+        var cw = Math.round(w * scale / 2) * 2, ch = Math.round(h * scale / 2) * 2;
+        var cv = document.createElement('canvas'); cv.width = cw; cv.height = ch;
+        var g = cv.getContext('2d');
+        var stream = cv.captureStream(30);
+        audioFor(file).then(function (a) {
+          if (done) return;
+          if (a && a.track) stream.addTrack(a.track);
+          var chunks = [];
+          try { rec = new MediaRecorder(stream, { mimeType: mime, videoBitsPerSecond: 1200000, audioBitsPerSecond: 96000 }); }
+          catch (e) { return fail(e); }
+          rec.ondataavailable = function (e) { if (e.data && e.data.size) chunks.push(e.data); };
+          rec.onstop = function () {
+            if (done) return; done = true;
+            var type = mime.split(';')[0];
+            var blob = new Blob(chunks, { type: type });
+            cleanup();
+            if (!blob.size) return reject(new Error('empty'));
+            resolve({ blob: blob, type: type, ext: type === 'video/mp4' ? 'mp4' : 'webm' });
+          };
+          function draw() {
+            g.drawImage(v, 0, 0, cw, ch);
+            if (onProgress) onProgress(Math.min(0.99, v.currentTime / dur));
+            if (!v.ended && !done) raf = requestAnimationFrame(draw);
+          }
+          v.onended = function () { g.drawImage(v, 0, 0, cw, ch); setTimeout(function () { try { rec.stop(); } catch (e) { fail(e); } }, 200); };
+          rec.start(1000);
+          v.play().then(function () { if (a) src = a.start(); draw(); }).catch(fail);
+          timer = setTimeout(function () { fail(new Error('timeout')); }, dur * 3000 + 30000);
+        });
+      };
+      v.src = url;
+    });
+  }
+  // Returns { blob, type, ext } ready to upload, shrinking when the file is big.
+  function prepareVideo(f, onShrink) {
+    var orig = { blob: f, type: typeOf(f), ext: extOf(f) || (typeOf(f) === 'video/quicktime' ? 'mov' : 'mp4') };
+    var p = (f.size > SHRINK_OVER && canShrink())
+      ? shrinkVideo(f, onShrink).then(function (r) { return r.blob.size < f.size ? r : orig; }).catch(function () { return orig; })
+      : Promise.resolve(orig);
+    return p.then(function (r) {
+      if (r.blob.size > MAX_MB * 1048576) throw new Error((f.name || 'That video') + ' is too long to send. Trim it to under 4 minutes and try again.');
+      return r;
+    });
+  }
+
   function fileRow(f, i) {
     return '<div class="file" data-i="' + i + '"><span class="nm">' + esc(f.name || 'Video') + '</span><span class="muted small">' +
-      (f.size / 1048576).toFixed(f.size > 10485760 ? 0 : 1) + 'MB</span><span class="prog"><b></b></span>' +
+      (f.size / 1048576).toFixed(f.size > 10485760 ? 0 : 1) + 'MB</span><span class="muted small stage"></span><span class="prog"><b></b></span>' +
       '<button type="button" class="x" aria-label="Remove ' + esc(f.name) + '">×</button></div>';
   }
   function pickVideos(listEl, files, max) {
@@ -298,7 +398,8 @@
       Array.prototype.forEach.call(list, function (f) {
         if (ctl.files.length >= ctl.max) { toast('You can add up to ' + ctl.max + ' videos.', true); return; }
         if (!/^video\//.test(typeOf(f))) { toast(f.name + ' is not a video.', true); return; }
-        if (f.size > MAX_MB * 1048576) { toast(f.name + ' is over ' + MAX_MB + 'MB. Trim it or film at 1080p instead of 4K.', true); return; }
+        var limit = canShrink() ? MAX_IN_MB : MAX_MB;
+        if (f.size > limit * 1048576) { toast(f.name + ' is too big. Trim it to under 4 minutes, or film at 1080p instead of 4K.', true); return; }
         ctl.files.push(f);
       });
       ctl.draw();
@@ -312,12 +413,15 @@
       var paths = [];
       return ctl.files.reduce(function (p, f, i) {
         return p.then(function () {
-          var bar = $('.file[data-i="' + i + '"] .prog b', listEl);
-          var ext = extOf(f) || (typeOf(f) === 'video/quicktime' ? 'mov' : 'mp4');
-          var path = me.id + '/' + Date.now() + '-' + rand() + '.' + ext;
+          var row = $('.file[data-i="' + i + '"]', listEl);
+          var bar = row && $('.prog b', row), stage = row && $('.stage', row);
+          function show(t, r) { if (stage) stage.textContent = t; if (bar) bar.style.width = Math.round(r * 100) + '%'; }
           $$('.x', listEl).forEach(function (b) { b.disabled = true; });
-          return upload('lesson-videos', path, f, typeOf(f), function (r) { if (bar) bar.style.width = Math.round(r * 100) + '%'; })
-            .then(function (pth) { paths.push(pth); });
+          return prepareVideo(f, function (r) { show('Shrinking', r); }).then(function (v) {
+            var path = me.id + '/' + Date.now() + '-' + rand() + '.' + v.ext;
+            show('Uploading', 0);
+            return upload('lesson-videos', path, v.blob, v.type, function (r) { show(r >= 1 ? 'Done' : 'Uploading', r); });
+          }).then(function (pth) { paths.push(pth); });
         });
       }, Promise.resolve()).then(function () { return paths; });
     };
@@ -662,7 +766,7 @@
         '<label class="f">What do you want help with?<input class="in" name="topic" maxlength="140" placeholder="e.g. My bandeja keeps landing short" required></label>' +
         '<div class="chips" id="quick">' + WORK_ON.slice(0, 8).map(function (w) { return '<button type="button" class="chip">' + esc(w) + '</button>'; }).join('') + '</div>' +
         '<label class="f">Message to ' + esc(fn) + ' <span class="hint">What happens in the clip, what you have tried, how it feels</span><textarea class="in" name="body" maxlength="5000" rows="5"></textarea></label>' +
-        '<div class="f" style="display:flex;flex-direction:column;gap:10px;font-weight:700">Your videos <span class="hint">Up to 3 clips, ' + MAX_MB + 'MB each. Film at 1080p, not 4K. Side on or from behind works best.</span>' +
+        '<div class="f" style="display:flex;flex-direction:column;gap:10px;font-weight:700">Your videos <span class="hint">Up to 3 clips. Big videos are shrunk automatically before sending, so keep this screen open while they send. Side on or from behind works best.</span>' +
         '<div class="files" id="files"></div>' +
         '<button type="button" class="btn" id="add" style="align-self:flex-start">+ Add video</button>' +
         '<input type="file" id="pick" accept="video/*" multiple hidden></div>' +
@@ -681,6 +785,7 @@
         var topic = f.topic.value.trim();
         if (!topic) { e.textContent = 'Tell ' + fn + ' what you want help with.'; e.hidden = false; f.topic.focus(); return; }
         if (!picker.files.length) { e.textContent = 'Add at least one video of your game.'; e.hidden = false; return; }
+        primeAudio();
         b.disabled = true; b.textContent = 'Uploading videos…'; $('#add').disabled = true;
         picker.uploadAll().then(function (paths) {
           b.textContent = 'Sending…';
@@ -933,6 +1038,7 @@
       e.hidden = true;
       if (!body && !picker.files.length) { e.textContent = 'Write a message or add a video.'; e.hidden = false; return; }
       if (isCoach && doneFlag && !picker.files.length && !confirm('Mark this lesson done without a video reply?')) return;
+      primeAudio();
       var btns = $$('button', form); btns.forEach(function (b) { b.disabled = true; });
       picker.uploadAll().then(function (paths) {
         return rpc('send_message', { p_lesson: active.id, p_body: body, p_videos: paths, p_mark_done: !!(isCoach && doneFlag && open) });
@@ -1126,9 +1232,14 @@
     if ($('#introDel')) $('#introDel').onclick = function () { rpc('save_my_profile', { p: { intro_video_url: '' } }).then(function (p2) { me = p2; coachProfileForm(); }); };
     $('#intro').onchange = function (ev) {
       var file = ev.target.files[0]; if (!file) return;
-      if (file.size > MAX_MB * 1048576) { toast('That video is over ' + MAX_MB + 'MB. Keep it under 60 seconds at 1080p.', true); return; }
-      var b = $('#introBtn'), prog = $('#introProg'); b.disabled = true; b.textContent = 'Uploading…'; prog.hidden = false;
-      upload('coach-media', me.id + '/intro-' + Date.now() + '.' + (extOf(file) || 'mp4'), file, typeOf(file), function (r) { $('b', prog).style.width = Math.round(r * 100) + '%'; })
+      if (file.size > (canShrink() ? MAX_IN_MB : MAX_MB) * 1048576) { toast('That video is too big. Keep it under 60 seconds.', true); return; }
+      primeAudio();
+      var b = $('#introBtn'), prog = $('#introProg'); b.disabled = true; b.textContent = 'Preparing…'; prog.hidden = false;
+      prepareVideo(file, function (r) { b.textContent = 'Shrinking…'; $('b', prog).style.width = Math.round(r * 100) + '%'; })
+        .then(function (v) {
+          b.textContent = 'Uploading…';
+          return upload('coach-media', me.id + '/intro-' + Date.now() + '.' + v.ext, v.blob, v.type, function (r) { $('b', prog).style.width = Math.round(r * 100) + '%'; });
+        })
         .then(function (path) { return rpc('save_my_profile', { p: { intro_video_url: publicUrl(path) } }); })
         .then(function (p2) { me = p2; toast('Intro video saved'); coachProfileForm(); })
         .catch(function (err) { toast(err.message, true); b.disabled = false; b.textContent = 'Add intro video'; prog.hidden = true; });
