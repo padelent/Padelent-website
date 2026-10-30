@@ -597,9 +597,9 @@
         '</div></section>';
 
       var stats = '<div class="cpstats">' +
-        '<div><b>' + (c.review_count ? fmtRating(c.avg_rating) + ' ' + I.star(true, 20) : 'New') + '</b><span>' + (c.review_count ? c.review_count + ' rating' + (c.review_count === 1 ? '' : 's') : 'No ratings yet') + '</span></div>' +
         '<div><b>' + money(c.price_pence) + '</b><span>Per lesson</span></div>' +
-        '<div><b>' + (c.lessons_done || 0) + '</b><span>Lesson' + (c.lessons_done === 1 ? '' : 's') + '</span></div></div>';
+        '<div><b>' + (c.lessons_done || 0) + '</b><span>Lesson' + (c.lessons_done === 1 ? '' : 's') + ' given</span></div>' +
+        '<div><b>' + (c.review_count ? fmtRating(c.avg_rating) + ' ' + I.star(true, 20) : 'New') + '</b><span>' + (c.review_count ? c.review_count + ' rating' + (c.review_count === 1 ? '' : 's') : 'No ratings yet') + '</span></div></div>';
 
       var about = (c.intro_video_url || c.bio) ? '<section class="cpsec"><div class="lab">About</div>' +
         (c.intro_video_url ? '<div class="media16"><video controls playsinline preload="metadata" src="' + esc(c.intro_video_url) + '#t=0.1"' + (c.photo_url ? ' poster="' + esc(c.photo_url) + '"' : '') + '></video></div>' : '') +
