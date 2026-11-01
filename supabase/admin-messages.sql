@@ -20,6 +20,7 @@ create table if not exists public.inbox_messages (
   created_at timestamptz not null default now()
 );
 create index if not exists inbox_messages_user_idx on public.inbox_messages (user_id, created_at);
+alter table public.inbox_messages add column if not exists image_url text;
 
 create table if not exists public.broadcasts (
   id uuid primary key default gen_random_uuid(),
@@ -102,7 +103,7 @@ begin
   select json_build_object(
     'admin_name', public.admin_name(),
     'messages', coalesce((select json_agg(json_build_object(
-        'id', m.id, 'mine', m.sender_id = v_uid, 'body', m.body, 'created_at', m.created_at, 'broadcast', m.broadcast_id is not null)
+        'id', m.id, 'mine', m.sender_id = v_uid, 'body', m.body, 'created_at', m.created_at, 'broadcast', m.broadcast_id is not null, 'image_url', m.image_url)
       order by m.created_at) from public.inbox_messages m where m.user_id = v_uid), '[]'::json))
   into v;
   update public.inbox_messages set read_by_user = true where user_id = v_uid and not read_by_user;
@@ -191,7 +192,7 @@ begin
   if not public.is_admin() then raise exception 'Admins only.'; end if;
   select json_build_object('user_id', p.id, 'full_name', p.full_name, 'role', p.role, 'email', u.email,
     'messages', coalesce((select json_agg(json_build_object('id', m.id, 'from_admin', m.sender_id <> m.user_id, 'body', m.body,
-        'created_at', m.created_at, 'broadcast', m.broadcast_id is not null) order by m.created_at)
+        'created_at', m.created_at, 'broadcast', m.broadcast_id is not null, 'image_url', m.image_url) order by m.created_at)
       from public.inbox_messages m where m.user_id = p.id), '[]'::json))
   into v from public.profiles p join auth.users u on u.id = p.id where p.id = p_user;
   update public.inbox_messages set read_by_admin = true where user_id = p_user and not read_by_admin;
@@ -221,3 +222,60 @@ revoke execute on function public.inbox_unread(), public.my_inbox(), public.send
 grant execute on function public.inbox_unread(), public.my_inbox(), public.send_inbox_message(text),
   public.admin_broadcast(text, text), public.admin_conversations(), public.admin_thread(uuid), public.admin_send(uuid, text),
   public.admin_name() to authenticated;
+
+-- ---------- Welcome message from you (the founder) ----------
+-- Players get it as soon as they sign up; coaches get it when you approve them.
+-- It sits in their Padelent messages with the "add to home screen" guide attached.
+
+
+create or replace function public.send_welcome_inbox(p_user uuid, p_role text) returns void
+language plpgsql security definer set search_path = public as $$
+declare v_admin uuid; v_from text; v_first text; v_body text;
+begin
+  select id into v_admin from public.profiles where is_admin order by created_at limit 1;
+  if v_admin is null or v_admin = p_user then return; end if;
+  if exists (select 1 from public.inbox_messages where user_id = p_user and sender_id = v_admin and body like 'Hi %it''s %, founder of Padelent%') then return; end if;
+  v_from := public.admin_name();
+  select coalesce(nullif(split_part(trim(full_name), ' ', 1), ''), 'there') into v_first from public.profiles where id = p_user;
+
+  if p_role = 'coach' then
+    v_body := 'Hi ' || v_first || ', it''s ' || v_from || ', founder of Padelent. You''re approved and live! 🎉' || chr(10) || chr(10) ||
+      'Players can now find you and book lessons with you. The quickest way to get your first lessons is to share your profile link: go to My profile, tap Copy profile link, and post it on your Instagram and send it to your own players. Switching on a free trial lesson helps too.' || chr(10) || chr(10) ||
+      'Have you added Padelent to your phone''s home screen yet? Then it opens just like an app and you''ll never miss a lesson. Here''s how 👇' || chr(10) || chr(10) ||
+      'Any questions at all, just reply here. I read every message.' || chr(10) || v_from;
+  else
+    v_body := 'Hi ' || v_first || ', it''s ' || v_from || ', founder of Padelent. Welcome! 🎾' || chr(10) || chr(10) ||
+      'Padelent gets a real coach''s eyes on your game: pick a coach, send a clip of your padel, and get a personal video lesson back. Lots of our coaches offer a free trial lesson, so it''s a great way to start.' || chr(10) || chr(10) ||
+      'Have you added Padelent to your phone''s home screen yet? It takes a minute and then it opens just like an app. Here''s how 👇' || chr(10) || chr(10) ||
+      'If you have any questions, just reply here. I read every message.' || chr(10) || v_from;
+  end if;
+
+  insert into public.inbox_messages (user_id, sender_id, body, image_url, read_by_user, read_by_admin)
+  values (p_user, v_admin, v_body, 'https://padelent.com/app/install-guide.jpg', false, true);
+exception when others then
+  return;  -- never block a sign-up or an approval
+end $$;
+
+revoke execute on function public.send_welcome_inbox(uuid, text) from public, anon, authenticated;
+
+create or replace function public.welcome_inbox_on_signup() returns trigger
+language plpgsql security definer set search_path = public as $$
+begin
+  if new.role = 'player' then perform public.send_welcome_inbox(new.id, 'player'); end if;
+  return new;
+end $$;
+
+drop trigger if exists welcome_inbox_on_signup on public.profiles;
+create trigger welcome_inbox_on_signup after insert on public.profiles
+  for each row execute function public.welcome_inbox_on_signup();
+
+create or replace function public.welcome_inbox_on_approve() returns trigger
+language plpgsql security definer set search_path = public as $$
+begin
+  if new.approved and not old.approved then perform public.send_welcome_inbox(new.id, 'coach'); end if;
+  return new;
+end $$;
+
+drop trigger if exists welcome_inbox_on_approve on public.coaches;
+create trigger welcome_inbox_on_approve after update of approved on public.coaches
+  for each row execute function public.welcome_inbox_on_approve();

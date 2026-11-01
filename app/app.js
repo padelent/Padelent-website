@@ -470,7 +470,7 @@
     return '<div class="auth">' + I.court.replace('court-bg', 'court-bg" style="opacity:.1') +
       '<a class="logo" href="/" style="position:relative;font-size:28px">' + I.logo + 'Padelent</a>' +
       '<div class="box">' + inner + '</div>' +
-      '<p class="small muted" style="position:relative">Padel plus talent · <a href="/privacy.html">Privacy</a></p></div>';
+      '<p class="small muted" style="position:relative">Padel plus talent · <a href="/terms.html">Terms</a> · <a href="/privacy.html">Privacy</a></p></div>';
   }
   function qs(name) {
     var q = (location.hash.split('?')[1] || '');
@@ -521,7 +521,7 @@
       '<p class="small muted" id="rolehint"></p>' +
       '<p class="err" id="e" hidden></p>' +
       '<button class="btn acc big block" type="submit">Create account</button>' +
-      '<p class="small muted">By signing up you agree to how we use your details in our <a href="/privacy.html">privacy notice</a>.</p></form>' +
+      '<p class="small muted">By creating an account you agree to our <a href="/terms.html" target="_blank">Terms</a> and <a href="/privacy.html" target="_blank">Privacy notice</a>.</p></form>' +
       '<a class="link" href="#/login' + (qs('next') ? '?next=' + encodeURIComponent(qs('next')) : '') + '">I already have an account</a>');
     function setRole(r) {
       role = r;
@@ -1179,7 +1179,8 @@
   function multiVal(name) { return $$('[data-multi="' + name + '"] .chip.on').map(function (b) { return b.textContent; }); }
   function logoutBtn() {
     return '<div class="panel" style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap"><div><b>' + esc(me.full_name) + '</b><div class="muted small">' + esc((session && session.user && session.user.email) || '') + '</div></div>' +
-      '<div style="display:flex;gap:10px;flex-wrap:wrap"><a class="btn sm" href="mailto:' + esc(C.contactEmail) + '">Help</a><button class="btn sm" id="logout">Log out</button></div></div>';
+      '<div style="display:flex;gap:10px;flex-wrap:wrap"><a class="btn sm" href="mailto:' + esc(C.contactEmail) + '">Help</a><button class="btn sm" id="logout">Log out</button></div></div>' +
+      '<p class="small muted" style="text-align:center"><a href="/terms.html" target="_blank">Terms</a> · <a href="/privacy.html" target="_blank">Privacy</a></p>';
   }
   function wireLogout() {
     var b = $('#logout'); if (!b) return;
@@ -1440,7 +1441,9 @@
       var adminSide = meIsAdmin ? mine : !mine;
       return '<div class="msg' + (adminSide ? ' coach' : '') + '"><span class="avatar' + (adminSide ? ' acc' : '') + '">' + (adminSide ? 'P' : esc(otherIni)) + '</span>' +
         '<div class="bub"><div class="who"><b>' + esc(mine ? 'You' : otherName) + '</b><span class="muted small">' + when(m.created_at) + (m.broadcast ? ' · sent to everyone' : '') + '</span></div>' +
-        '<div class="body">' + esc(m.body) + '</div></div></div>';
+        '<div class="body">' + esc(m.body) + '</div>' +
+        (m.image_url && /^https:\/\//.test(m.image_url) ? '<a class="chatimg" href="' + esc(m.image_url) + '" target="_blank" rel="noopener"><img src="' + esc(m.image_url) + '" alt="How to add Padelent to your home screen" loading="lazy"></a>' : '') +
+        '</div></div>';
     }).join('');
   }
 

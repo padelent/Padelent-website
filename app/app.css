@@ -300,3 +300,6 @@ details.game summary::-webkit-details-marker { display: none; }
 .lsub { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding-left: 60px; font-weight: 700; }
 .lsub .in { width: 110px; min-height: 44px; padding: 8px 12px; }
 @media (max-width: 760px) { .lsub { padding-left: 0; } }
+
+.chatimg { display: block; margin-top: 10px; border-radius: 14px; overflow: hidden; max-width: 340px; }
+.chatimg img { display: block; width: 100%; height: auto; }
