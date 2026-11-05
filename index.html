@@ -61,8 +61,8 @@ Padelent
 <nav aria-label="Main" style="display: flex; flex-wrap: wrap; align-items: center; gap: 4px 32px">
 <a href="#how" style="color: #FFFFFF; text-decoration: none; font-weight: 700; min-height: 44px; display: flex; align-items: center">How it works</a>
 <a href="#coaches" style="color: #FFFFFF; text-decoration: none; font-weight: 700; min-height: 44px; display: flex; align-items: center">Become a coach</a>
-<a href="#join" style="color: #FFFFFF; text-decoration: none; font-weight: 700; min-height: 44px; display: flex; align-items: center">Log in</a>
-<a href="#join" style="background: #D7F23A; color: #0A1420; text-decoration: none; font-weight: 700; padding: 0 22px; min-height: 46px; border-radius: 999px; display: flex; align-items: center">Get started</a>
+<a href="/app/#/login" style="color: #FFFFFF; text-decoration: none; font-weight: 700; min-height: 44px; display: flex; align-items: center">Log in</a>
+<a href="/app/#/signup" style="background: #D7F23A; color: #0A1420; text-decoration: none; font-weight: 700; padding: 0 22px; min-height: 46px; border-radius: 999px; display: flex; align-items: center">Get started</a>
 </nav>
 </header>
 
@@ -82,8 +82,8 @@ For players
 <h2 style="margin: 0; font-family: 'Archivo', sans-serif; font-weight: 800; font-size: clamp(28px, 3vw, 38px); line-height: 1.1; letter-spacing: -0.02em">Find a coach for your game</h2>
 <p style="margin: 0; color: #D5DEE6">Send a video of your padel and get a personal video lesson and drills back from a coach you choose.</p>
 <div style="display: flex; flex-wrap: wrap; gap: 12px; margin-top: 8px">
-<a href="#join" style="flex: 1 1 180px; background: #D7F23A; color: #0A1420; text-decoration: none; font-weight: 700; min-height: 56px; border-radius: 8px; display: flex; align-items: center; justify-content: center">Get started</a>
-<a href="#how" style="flex: 1 1 180px; color: #FFFFFF; text-decoration: none; font-weight: 700; min-height: 56px; border: 2px solid #FFFFFF; border-radius: 8px; display: flex; align-items: center; justify-content: center">Browse coaches</a>
+<a href="/app/#/signup" style="flex: 1 1 180px; background: #D7F23A; color: #0A1420; text-decoration: none; font-weight: 700; min-height: 56px; border-radius: 8px; display: flex; align-items: center; justify-content: center">Get started</a>
+<a href="/app/#/coaches" style="flex: 1 1 180px; color: #FFFFFF; text-decoration: none; font-weight: 700; min-height: 56px; border: 2px solid #FFFFFF; border-radius: 8px; display: flex; align-items: center; justify-content: center">Browse coaches</a>
 </div>
 </div>
 
@@ -236,7 +236,7 @@ For coaches
 <div style="font-size: 14px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: #A9B8C6">For coaches</div>
 <h2 style="margin: 0; font-family: 'Archivo', sans-serif; font-weight: 800; font-size: clamp(32px, 4vw, 52px); line-height: 1.05; letter-spacing: -0.02em">Coach more players without more hours on court.</h2>
 <p style="margin: 0; color: #D5DEE6; max-width: 480px">Reply to student videos when it suits you, from anywhere. Padelent brings you players who are looking for a coach and handles the payments.</p>
-<a href="#join" style="align-self: flex-start; background: #D7F23A; color: #0A1420; text-decoration: none; font-weight: 700; padding: 0 28px; min-height: 56px; border-radius: 8px; display: flex; align-items: center">Start coaching</a>
+<a href="/app/#/signup?role=coach" style="align-self: flex-start; background: #D7F23A; color: #0A1420; text-decoration: none; font-weight: 700; padding: 0 28px; min-height: 56px; border-radius: 8px; display: flex; align-items: center">Start coaching</a>
 </div>
 <div style="flex: 1 1 400px; min-width: 0; display: flex; flex-wrap: wrap; gap: 16px">
 
@@ -285,8 +285,8 @@ For coaches
 </div>
 
 <div style="padding: 22px 0; border-top: 1px solid #C3CED8; border-bottom: 1px solid #C3CED8; display: flex; flex-direction: column; gap: 6px">
-<h3 style="margin: 0; font-family: 'Archivo', sans-serif; font-weight: 800; font-size: 21px">When does it launch?</h3>
-<p style="margin: 0; color: #4A5A68">We are signing up our first coaches now. Leave your email below and you will be first to hear when we open.</p>
+<h3 style="margin: 0; font-family: 'Archivo', sans-serif; font-weight: 800; font-size: 21px">How do I start?</h3>
+<p style="margin: 0; color: #4A5A68">Make a free account, pick a coach and send your first clip. Lots of coaches offer a free trial lesson. <a href="/app/#/signup" style="color: #0A1420; font-weight: 700">Get started</a></p>
 </div>
 
 </div>
@@ -295,21 +295,14 @@ For coaches
 
 <section id="join">
 <div style="max-width: 860px; margin: 0 auto; padding: 96px 24px; display: flex; flex-direction: column; align-items: center; gap: 24px; text-align: center">
-<h2 style="margin: 0; font-family: 'Archivo', sans-serif; font-weight: 800; font-size: clamp(36px, 5vw, 64px); line-height: 1.02; letter-spacing: -0.02em">Be first on <span style="color: #D7F23A">court</span></h2>
-<p style="margin: 0; color: #D5DEE6; max-width: 520px">Leave your email and we will tell you the day coaches go live. Coaches, tick the box and we will send you the application.</p>
-<div style="width: 100%; max-width: 520px; display: flex; flex-direction: column; gap: 12px; text-align: left">
-<label for="join-email-b" style="font-size: 14px; font-weight: 700">Email address</label>
-<div style="display: flex; flex-wrap: wrap; gap: 10px">
-<input id="join-email-b" type="email" placeholder="you@example.com" style="flex: 1 1 240px; min-width: 0; height: 56px; padding: 0 18px; border-radius: 8px; border: 1px solid #7C8FA3; background: #14212F; color: #FFFFFF; font-family: inherit; font-size: 17px">
-<button type="button" style="flex: 0 0 auto; height: 56px; padding: 0 28px; border: 0; border-radius: 8px; background: #D7F23A; color: #0A1420; font-family: inherit; font-size: 17px; font-weight: 700; cursor: pointer">Get started</button>
+<h2 style="margin: 0; font-family: 'Archivo', sans-serif; font-weight: 800; font-size: clamp(36px, 5vw, 64px); line-height: 1.02; letter-spacing: -0.02em">Get on <span style="color: #D7F23A">court</span></h2>
+<p style="margin: 0; color: #D5DEE6; max-width: 520px">Pick a coach, send a clip of your game and get a personal video lesson back. Coaches, make your profile and start taking lessons.</p>
+<div style="width: 100%; max-width: 520px; display: flex; flex-wrap: wrap; gap: 12px">
+<a href="/app/#/signup" style="flex: 1 1 220px; background: #D7F23A; color: #0A1420; text-decoration: none; font-weight: 700; min-height: 56px; border-radius: 8px; display: flex; align-items: center; justify-content: center">Find a coach</a>
+<a href="/app/#/signup?role=coach" style="flex: 1 1 220px; color: #FFFFFF; text-decoration: none; font-weight: 700; min-height: 56px; border: 2px solid #FFFFFF; border-radius: 8px; display: flex; align-items: center; justify-content: center">Join as a coach</a>
 </div>
-<div style="display: flex; align-items: center; gap: 10px; min-height: 44px">
-<input id="join-coach-b" type="checkbox" style="width: 22px; height: 22px; margin: 0">
-<label for="join-coach-b" style="color: #D5DEE6">I am a coach</label>
+<p style="margin: 0; font-size: 14px; color: #A9B8C6">Already have an account? <a href="/app/#/login" style="color: #D7F23A">Log in</a></p>
 </div>
-<p id="join-msg" role="status" style="margin: 0; min-height: 26px; font-weight: 700; color: #D7F23A"></p>
-<p style="margin: 0; font-size: 14px; color: #A9B8C6">We will only email you about Padelent. Unsubscribe any time. <a href="/privacy.html" style="color: #A9B8C6">Privacy</a></p>
-</div></div>
 </section>
 
 <footer style="border-top: 1px solid rgba(255,255,255,0.2)">
@@ -418,14 +411,6 @@ For coaches
     submit(dEmail, role, "popup", dMsg, form.querySelector('button[type="submit"]'));
   });
 
-  var pEmail = document.getElementById("join-email-b");
-  var pCoach = document.getElementById("join-coach-b");
-  var pMsg = document.getElementById("join-msg");
-  var pButton = document.querySelector("#join button");
-  pButton.addEventListener("click", function () {
-    submit(pEmail, pCoach.checked ? "coach" : "player", "page", pMsg, pButton);
-  });
-  pEmail.addEventListener("keydown", function (e) { if (e.key === "Enter") pButton.click(); });
 })();
 </script>
 </body>
