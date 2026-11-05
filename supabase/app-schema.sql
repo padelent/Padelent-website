@@ -425,7 +425,7 @@ end $$;
 create or replace function public.coach_feed() returns json
 language sql stable security definer set search_path = public as $$
   select coalesce(json_agg(x order by x.created_at desc), '[]'::json) from (
-    select l.id, l.player_id, l.topic, l.status, l.created_at, l.price_pence, l.platform_fee_pence, l.closed_at, l.needs_coach, l.kind, l.refunded_at, l.transferred_at,
+    select l.id, l.player_id, l.topic, l.status, l.created_at, l.price_pence, l.platform_fee_pence, l.closed_at, l.needs_coach, l.kind, l.refunded_at, l.transferred_at, l.paid,
            p.full_name as player_name, pl.level, pl.side, pl.hand,
            (select count(*) from public.lessons l2 where l2.player_id = l.player_id and l2.coach_id = l.coach_id
               and l2.status <> 'pending_payment' and l2.created_at <= l.created_at) as nth,

@@ -303,3 +303,7 @@ details.game summary::-webkit-details-marker { display: none; }
 
 .chatimg { display: block; margin-top: 10px; border-radius: 14px; overflow: hidden; max-width: 340px; }
 .chatimg img { display: block; width: 100%; height: auto; }
+
+a.lopt { text-decoration: none; cursor: pointer; transition: border-color .15s; }
+a.lopt:hover, a.lopt:focus-visible { border-color: var(--acc); }
+.lopt .chev { color: var(--acc); font-size: 26px; line-height: 1; margin-left: -4px; }

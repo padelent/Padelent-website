@@ -739,8 +739,14 @@
         (c.bio ? '<p class="bio" id="bio">' + esc(c.bio) + '</p><button class="link more" id="more" hidden>Read more</button>' : '') + '</section>' : '';
 
       var opts = [];
-      if (c.offers_free) opts.push('<div class="lopt"><div><b>Free trial lesson</b><span>One per player. Send a clip and ' + esc(fn) + ' will show you how they coach.</span></div><em>Free</em></div>');
-      if (c.offers_single) opts.push('<div class="lopt"><div><b>Single lesson' + (paidOff ? ' <i class="soon">Opening soon</i>' : '') + '</b><span>Up to 3 clips and a personal video reply with drills.</span></div><em>' + money(c.price_pence) + '</em></div>');
+      function optTag(k, ok) {
+        if (!canBook || !ok) return ['<div class="lopt">', '</div>'];
+        var h = '#/book/' + id + '?kind=' + k;
+        return ['<a class="lopt go" href="' + (!me ? '#/signup?next=' + encodeURIComponent(h) : h) + '">', '<span class="chev" aria-hidden="true">›</span></a>'];
+      }
+      var tf = optTag('free', freeOk), ts = optTag('single', !paidOff);
+      if (c.offers_free) opts.push(tf[0] + '<div><b>Free trial lesson' + (!freeOk && me && me.role === 'player' ? ' <i class="soon">Used</i>' : '') + '</b><span>One per player. Send a clip and ' + esc(fn) + ' will show you how they coach.</span></div><em>Free</em>' + tf[1]);
+      if (c.offers_single) opts.push(ts[0] + '<div><b>Single lesson' + (paidOff ? ' <i class="soon">Opening soon</i>' : '') + '</b><span>Up to 3 clips and a personal video reply with drills.</span></div><em>' + money(c.price_pence) + '</em>' + ts[1]);
       if (c.offers_monthly && c.monthly_price_pence) opts.push('<div class="lopt"><div><b>Monthly plan <i class="soon">Coming soon</i></b><span>Up to ' + c.monthly_videos_per_week + ' lesson' + (c.monthly_videos_per_week == 1 ? '' : 's') + ' a week with ' + esc(fn) + '.</span></div><em>' + money(c.monthly_price_pence) + '<small>/month</small></em></div>');
       var lessonsSec = opts.length ? '<section class="cpsec"><div class="lab">Lessons</div><div class="lopts">' + opts.join('') + '</div></section>' : '';
       var specs = (c.specialities || []).length ? '<section class="cpsec"><div class="lab">Specialities</div><ul class="ticks">' +
@@ -869,6 +875,9 @@
       if (!c || !(c.offers_single || (c.offers_free && freeOk))) { render(shell('coaches', '<div class="empty"><h2>' + (c && c.offers_free && !c.offers_single ? 'You have already had your free lesson with ' + esc(firstName(c.full_name)) : 'This coach is not taking lessons right now') + '</h2><a class="btn acc" href="#/coaches">See all coaches</a></div>')); return; }
       var fn = firstName(c.full_name);
       var kind = c.offers_free && freeOk ? 'free' : 'single';
+      var want = ((location.hash.split('?')[1] || '').match(/kind=(free|single)/) || [])[1];
+      if (want === 'single' && c.offers_single) kind = 'single';
+      if (want === 'free' && c.offers_free && freeOk) kind = 'free';
       var kinds = [];
       if (c.offers_free && freeOk) kinds.push(['free', 'Free trial lesson', 'Free', 'One per player. ' + fn + ' will look at your clip and show you how they coach.']);
       if (c.offers_single) kinds.push(['single', 'Single lesson', money(c.price_pence), 'A personal video reply with drills to practise.']);
@@ -953,7 +962,7 @@
       feed.sort(function (a, b) { return (b.needs_coach ? 1 : 0) - (a.needs_coach ? 1 : 0); });
       state.newCount = feed.filter(function (l) { return l.status === 'new' || l.needs_coach; }).length;
       var now = new Date(), m0 = new Date(now.getFullYear(), now.getMonth(), 1);
-      var doneMonth = feed.filter(function (l) { return l.status === 'done' && new Date(l.created_at) >= m0; });
+      var doneMonth = feed.filter(function (l) { return earns(l) && new Date(l.created_at) >= m0; });
       var earned = doneMonth.reduce(function (s, l) { return s + l.price_pence - l.platform_fee_pence; }, 0);
       var n = { all: feed.length, 'new': 0, awaiting: 0, done: 0 };
       function tabOf(l) { return l.needs_coach ? 'new' : l.status; }
@@ -992,6 +1001,8 @@
   }
 
   function paymentsLive() { return !!(me && me.payments_live); }
+  // A finished lesson counts towards earnings (once card payments are live, only paid ones).
+  function earns(l) { return l.status === 'done' && !l.refunded_at && (!paymentsLive() || l.paid || !l.price_pence || l.kind === 'free'); }
   function payoutNotice() {
     var c = (me && me.coach) || {};
     if (!paymentsLive() || c.payouts_ready) return '';
@@ -1427,7 +1438,7 @@
     loading('earnings');
     rpc('coach_feed').then(function (feed) {
       if (t !== navToken) return;
-      var done = (feed || []).filter(function (l) { return l.status === 'done' && !l.refunded_at; });
+      var done = (feed || []).filter(earns);
       var total = done.reduce(function (s, l) { return s + l.price_pence - l.platform_fee_pence; }, 0);
       var now = new Date(), m0 = new Date(now.getFullYear(), now.getMonth(), 1);
       var month = done.filter(function (l) { return new Date(l.created_at) >= m0; }).reduce(function (s, l) { return s + l.price_pence - l.platform_fee_pence; }, 0);
