@@ -109,7 +109,10 @@ begin
   if c.stripe_account_id is null then
     select email into v_email from auth.users where id = v_uid;
     a := public.stripe('POST', 'accounts', jsonb_build_object(
-      'type', 'express',
+      'controller[stripe_dashboard][type]', 'express',
+      'controller[fees][payer]', 'application',
+      'controller[losses][payments]', 'application',
+      'controller[requirement_collection]', 'stripe',
       'country', 'GB',
       'email', v_email,
       'business_type', 'individual',
@@ -117,7 +120,7 @@ begin
       'business_profile[mcc]', '8299',
       'business_profile[product_description]', 'Online padel coaching: personal video lessons sold through Padelent.',
       'business_profile[url]', 'https://padelent.com/coach/' || v_uid,
-      'metadata[padelent_coach]', v_uid::text), 'padelent-acct-' || v_uid);
+      'metadata[padelent_coach]', v_uid::text), 'padelent-acct2-' || v_uid);
     update public.coaches set stripe_account_id = a->>'id' where id = v_uid;
     c.stripe_account_id := a->>'id';
   end if;
