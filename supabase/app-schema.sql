@@ -518,8 +518,13 @@ begin
         'id', c.id, 'full_name', p.full_name, 'email', u.email, 'approved', c.approved, 'club', c.club,
         'city', c.city, 'price_pence', c.price_pence, 'photo_url', c.photo_url, 'bio', c.bio,
         'qualifications', c.qualifications, 'created_at', c.created_at) order by c.approved, c.created_at desc)
-      from public.coaches c join public.profiles p on p.id = c.id join auth.users u on u.id = c.id), '[]'::json),
-    'players', (select count(*) from public.players),
+      from public.coaches c join public.profiles p on p.id = c.id join auth.users u on u.id = c.id where p.role = 'coach'), '[]'::json),
+    'players', (select count(*) from public.profiles where role = 'player' and not is_admin),
+    'player_list', coalesce((select json_agg(json_build_object(
+        'id', p.id, 'full_name', p.full_name, 'email', u.email, 'created_at', p.created_at,
+        'lessons', (select count(*) from public.lessons l where l.player_id = p.id and l.status <> 'pending_payment'))
+        order by p.created_at desc)
+      from public.profiles p join auth.users u on u.id = p.id where p.role = 'player' and not p.is_admin), '[]'::json),
     'lessons', (select count(*) from public.lessons where status <> 'pending_payment'),
     'lessons_done', (select count(*) from public.lessons where status = 'done'),
     'revenue_pence', (select coalesce(sum(platform_fee_pence), 0) from public.lessons where status <> 'pending_payment')
@@ -532,6 +537,26 @@ begin
   if not public.is_admin() then raise exception 'Admins only.'; end if;
   update public.coaches set approved = p_approved where id = p_coach;
 end $$;
+
+-- Admin: switch an account between player and coach (e.g. a coach who signed up as a player by mistake).
+create or replace function public.admin_set_role(p_user uuid, p_role text) returns void
+language plpgsql security definer set search_path = public as $$
+begin
+  if not public.is_admin() then raise exception 'Admins only.'; end if;
+  if p_role not in ('player', 'coach') then raise exception 'Unknown account type.'; end if;
+  if (select is_admin from public.profiles where id = p_user) then raise exception 'Your own admin account stays as it is.'; end if;
+  update public.profiles set role = p_role where id = p_user;
+  if not found then raise exception 'Account not found.'; end if;
+  if p_role = 'coach' then
+    insert into public.coaches (id) values (p_user) on conflict (id) do nothing;
+  else
+    insert into public.players (id) values (p_user) on conflict (id) do nothing;
+    update public.coaches set approved = false where id = p_user;
+  end if;
+end $$;
+
+revoke execute on function public.admin_set_role(uuid, text) from public, anon;
+grant execute on function public.admin_set_role(uuid, text) to authenticated;
 
 -- Give the next Founding coach number (up to 25) when a coach is first approved.
 create or replace function public.assign_founding_number() returns trigger

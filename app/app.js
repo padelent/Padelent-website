@@ -1475,15 +1475,35 @@
           (c.qualifications ? '<div class="small">' + esc(c.qualifications) + '</div>' : '') +
           (c.bio ? '<div class="small muted" style="margin-top:4px;max-height:4.5em;overflow:hidden">' + esc(c.bio) + '</div>' : '<div class="small" style="color:var(--amber)">No bio yet</div>') + '</div>' +
           '<div style="display:flex;flex-direction:column;gap:8px"><button class="btn sm ' + (c.approved ? '' : 'acc') + '" data-approve="' + c.id + '" data-to="' + (!c.approved) + '">' + (c.approved ? 'Hide' : 'Approve') + '</button>' +
-          '<a class="btn sm" href="#/admin/chat/' + c.id + '">Message</a></div></div>';
+          '<a class="btn sm" href="#/admin/chat/' + c.id + '">Message</a>' +
+          (!c.approved ? '<button class="btn sm" data-role-to="player" data-user="' + c.id + '" data-name="' + esc(c.full_name || c.email) + '">Make player</button>' : '') + '</div></div>';
       }
+      function playerRow(p) {
+        return '<div class="admin-coach"><span class="avatar" style="width:44px;height:44px;border-radius:99px;background:' + grad(p.id) + '">' + esc(initials(p.full_name)) + '</span>' +
+          '<div style="flex:1;min-width:0"><b>' + esc(p.full_name || '(no name)') + '</b> <span class="muted small">' + esc(p.email) + '</span>' +
+          '<div class="muted small">Joined ' + shortDate(p.created_at) + ' · ' + p.lessons + ' lesson' + (p.lessons == 1 ? '' : 's') + '</div></div>' +
+          '<div style="display:flex;flex-direction:column;gap:8px"><button class="btn sm acc" data-role-to="coach" data-user="' + p.id + '" data-name="' + esc(p.full_name || p.email) + '">Make coach</button>' +
+          '<a class="btn sm" href="#/admin/chat/' + p.id + '">Message</a></div></div>';
+      }
+      var players = a.player_list || [];
       render(shell('admin', '<div><h1>Admin</h1><p class="muted" style="margin-top:6px">Only you can see this page.</p></div>' + adminTabs('overview') +
         '<div class="stats"><div class="stat"><div class="muted small">Players</div><div class="v">' + a.players + '</div></div>' +
         '<div class="stat"><div class="muted small">Coaches live</div><div class="v">' + live.length + '</div></div>' +
         '<div class="stat"><div class="muted small">Lessons (done)</div><div class="v">' + a.lessons + ' <span class="muted small">(' + a.lessons_done + ')</span></div></div>' +
         '<div class="stat"><div class="muted small">Padelent share</div><div class="v">' + money(a.revenue_pence) + '</div></div></div>' +
         '<section class="section"><h2>Waiting for approval (' + pending.length + ')</h2><div class="panel">' + (pending.length ? pending.map(coachRow).join('') : '<p class="muted">Nobody waiting.</p>') + '</div></section>' +
-        '<section class="section"><h2>Live coaches (' + live.length + ')</h2><div class="panel">' + (live.length ? live.map(coachRow).join('') : '<p class="muted">No live coaches yet.</p>') + '</div></section>'));
+        '<section class="section"><h2>Live coaches (' + live.length + ')</h2><div class="panel">' + (live.length ? live.map(coachRow).join('') : '<p class="muted">No live coaches yet.</p>') + '</div></section>' +
+        '<section class="section"><h2>Players (' + players.length + ')</h2><p class="muted small" style="margin:-6px 0 4px">A coach who signed up as a player by mistake? Tap Make coach, then ask them to log out and back in.</p><div class="panel">' + (players.length ? players.map(playerRow).join('') : '<p class="muted">No players yet.</p>') + '</div></section>'));
+      $$('[data-role-to]').forEach(function (b) {
+        b.onclick = function () {
+          var to = b.getAttribute('data-role-to'), name = b.getAttribute('data-name');
+          if (!confirm(to === 'coach' ? 'Make ' + name + ' a coach? They will need to log out and back in, then fill in their coach profile.' : 'Make ' + name + ' a player instead of a coach?')) return;
+          b.disabled = true;
+          rpc('admin_set_role', { p_user: b.getAttribute('data-user'), p_role: to })
+            .then(function () { toast(name + (to === 'coach' ? ' is now a coach' : ' is now a player')); pageAdmin(); })
+            .catch(function (e) { toast(e.message, true); b.disabled = false; });
+        };
+      });
       $$('[data-approve]').forEach(function (b) {
         b.onclick = function () {
           b.disabled = true;
