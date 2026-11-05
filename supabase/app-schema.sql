@@ -79,6 +79,10 @@ alter table public.lessons add column if not exists needs_coach boolean not null
 -- Card payments (Stripe). Players pay Padelent; the coach's share is sent once they reply.
 alter table public.coaches add column if not exists stripe_account_id text;
 alter table public.coaches add column if not exists payouts_ready boolean not null default false;
+
+-- Founding coaches: the first 25 coaches approved get a numbered Founding coach badge, kept for good.
+alter table public.coaches add column if not exists founding_number int;
+create unique index if not exists coaches_founding_number_idx on public.coaches (founding_number) where founding_number is not null;
 alter table public.lessons add column if not exists payment_intent text;
 alter table public.lessons add column if not exists charge_id text;
 alter table public.lessons add column if not exists transfer_id text;
@@ -199,6 +203,7 @@ select c.id, p.full_name, c.headline, c.club, c.city, c.bio, c.photo_url, c.intr
        c.racket, c.hand, c.side, c.playing_level, c.years_coaching, c.qualifications, c.languages,
        c.specialities, c.price_pence, c.created_at,
        c.offers_free, c.offers_single, c.offers_monthly, c.monthly_price_pence, c.monthly_videos_per_week,
+       c.founding_number,
        coalesce(r.avg_rating, 0)::float as avg_rating,
        coalesce(r.review_count, 0)::int as review_count,
        coalesce(l.lessons_done, 0)::int as lessons_done
@@ -527,6 +532,30 @@ begin
   if not public.is_admin() then raise exception 'Admins only.'; end if;
   update public.coaches set approved = p_approved where id = p_coach;
 end $$;
+
+-- Give the next Founding coach number (up to 25) when a coach is first approved.
+create or replace function public.assign_founding_number() returns trigger
+language plpgsql security definer set search_path = public as $$
+declare v_n int;
+begin
+  if new.approved and not coalesce(old.approved, false) and new.founding_number is null then
+    perform pg_advisory_xact_lock(hashtext('padelent_founding'));
+    select coalesce(max(founding_number), 0) into v_n from public.coaches;
+    if v_n < 25 then new.founding_number := v_n + 1; end if;
+  end if;
+  return new;
+end $$;
+
+drop trigger if exists assign_founding_number on public.coaches;
+create trigger assign_founding_number before update of approved on public.coaches
+  for each row execute function public.assign_founding_number();
+
+-- Coaches approved before the badge existed get numbered by when they joined.
+with already as (
+  select id, row_number() over (order by created_at) + (select coalesce(max(founding_number), 0) from public.coaches) as n
+  from public.coaches where approved and founding_number is null
+)
+update public.coaches c set founding_number = a.n from already a where c.id = a.id and a.n <= 25;
 
 -- Functions are for logged-in users only (the coach list view above is public).
 revoke execute on function public.my_profile(), public.save_my_profile(jsonb),

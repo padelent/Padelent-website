@@ -296,6 +296,7 @@
     return '<a class="ccard" href="#/coach/' + c.id + '">' + photoBox(c.full_name, c.id, c.photo_url, null, !!c.intro_video_url) +
       '<div style="display:flex;flex-direction:column;gap:3px;min-width:0">' +
       '<div class="cname"><span>' + esc(c.full_name) + '</span>' + I.tick + '</div>' +
+      (c.founding_number ? '<div><span class="founder">★ Founding coach</span></div>' : '') +
       (where ? '<div class="muted small">' + esc(where) + '</div>' : '') +
       (playLine(c) ? '<div class="small" style="color:#D5DEE6">' + esc(playLine(c)) + '</div>' : '') + '</div>' +
       '<div class="meta">' + ratingHtml(c) + '<span>' + priceLabel(c) + '</span>' + (c.offers_free ? '<span class="freetag">Free trial</span>' : '') + '</div>' +
@@ -724,6 +725,7 @@
         '<div class="in">' +
           '<div class="bigav" style="background:' + grad(c.id) + '">' + avatarIn + '</div>' +
           '<div class="nm"><h1>' + esc(c.full_name) + '</h1>' + I.tick.replace('width="18" height="18"', 'width="24" height="24"') + '</div>' +
+          (c.founding_number ? '<div class="founder big">★ Founding coach #' + c.founding_number + '</div>' : '') +
           (c.club ? '<div class="club">' + esc(c.club) + '</div>' : '') +
           (c.city ? '<div class="loc">' + pin + esc(c.city) + '</div>' : '') +
           (c.headline ? '<div class="hl">' + esc(c.headline) + '</div>' : '') +
@@ -1344,7 +1346,8 @@
   function coachProfileForm() {
     var c = me.coach || {};
     render(shell('profile',
-      payoutNotice() + (!c.approved ? approvalNotice() : '<div class="notice accb">' + I.lock.replace('stroke="#D7F23A"', 'stroke="#D7F23A"') + '<span><b>You are live.</b> Players can find and book you. <a href="#/coach/' + me.id + '">View your public profile</a></span></div>') +
+      payoutNotice() + (c.founding_number ? '<div class="notice accb"><span class="founder">★ Founding coach #' + c.founding_number + '</span><span>You are one of Padelent’s first 25 coaches. Your badge shows on your profile for good.</span></div>' : '') +
+      (!c.approved ? approvalNotice() : '<div class="notice accb">' + I.lock.replace('stroke="#D7F23A"', 'stroke="#D7F23A"') + '<span><b>You are live.</b> Players can find and book you. <a href="#/coach/' + me.id + '">View your public profile</a></span></div>') +
       '<div style="display:flex;justify-content:space-between;align-items:flex-end;gap:12px;flex-wrap:wrap"><h1>My coach profile</h1><div style="display:flex;gap:8px;flex-wrap:wrap"><button type="button" class="btn sm acc" id="share">Copy profile link</button><a class="btn sm" href="#/coach/' + me.id + '">' + (c.approved ? 'View public profile' : 'Preview') + '</a></div></div>' +
       '<p class="muted small" style="margin-top:-24px">Share your link on Instagram so your own players can book you.' + (c.approved ? '' : ' It works once we approve your profile.') + '</p>' +
       '<form class="form" id="f">' +

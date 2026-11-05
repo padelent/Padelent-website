@@ -307,3 +307,6 @@ details.game summary::-webkit-details-marker { display: none; }
 a.lopt { text-decoration: none; cursor: pointer; transition: border-color .15s; }
 a.lopt:hover, a.lopt:focus-visible { border-color: var(--acc); }
 .lopt .chev { color: var(--acc); font-size: 26px; line-height: 1; margin-left: -4px; }
+
+.founder { display: inline-flex; align-items: center; gap: 4px; background: #D7F23A; color: #0A1420; font-size: 12px; font-weight: 800; letter-spacing: .02em; border-radius: 99px; padding: 2px 10px; white-space: nowrap; }
+.founder.big { font-size: 14px; padding: 5px 14px; margin: 2px auto 0; }
