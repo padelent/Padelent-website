@@ -80,7 +80,7 @@ alter table public.lessons add column if not exists needs_coach boolean not null
 alter table public.coaches add column if not exists stripe_account_id text;
 alter table public.coaches add column if not exists payouts_ready boolean not null default false;
 
--- Founding coaches: the first 25 coaches approved get a numbered Founding coach badge, kept for good.
+-- Founding coaches: the first 25 coaches approved get a Founding 25 badge, kept for good (the number is only used to count to 25).
 alter table public.coaches add column if not exists founding_number int;
 create unique index if not exists coaches_founding_number_idx on public.coaches (founding_number) where founding_number is not null;
 alter table public.lessons add column if not exists payment_intent text;
