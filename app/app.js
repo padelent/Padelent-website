@@ -692,11 +692,12 @@
     Promise.all([
       rest('coach_cards?select=*&id=eq.' + encodeURIComponent(id)),
       rest('reviews?select=rating,tags,comment,display_name,topic,created_at&coach_id=eq.' + encodeURIComponent(id) + '&order=created_at.desc&limit=40'),
-      me && me.role === 'player' ? rpc('free_lesson_available', { p_coach: id }).catch(function () { return false; }) : Promise.resolve(null)
+      bookingOptions(id)
     ]).then(function (r) {
       if (t !== navToken) return;
-      var c = r[0] && r[0][0], reviews = r[1] || [], preview = false;
-      var freeOk = r[2] === null ? !!(r[0] && r[0][0] && r[0][0].offers_free) : !!r[2];
+      var c = r[0] && r[0][0], reviews = r[1] || [], preview = false, bo = r[2];
+      var freeOk = !!bo.free_available;
+      var paidOff = !!(bo.payments && !bo.paid_ready);
       if (!c && me && me.id === id && me.coach) {
         preview = true;
         c = Object.assign({}, me.coach, { full_name: me.full_name, avg_rating: 0, review_count: 0, lessons_done: 0 });
@@ -739,7 +740,7 @@
 
       var opts = [];
       if (c.offers_free) opts.push('<div class="lopt"><div><b>Free trial lesson</b><span>One per player. Send a clip and ' + esc(fn) + ' will show you how they coach.</span></div><em>Free</em></div>');
-      if (c.offers_single) opts.push('<div class="lopt"><div><b>Single lesson</b><span>Up to 3 clips and a personal video reply with drills.</span></div><em>' + money(c.price_pence) + '</em></div>');
+      if (c.offers_single) opts.push('<div class="lopt"><div><b>Single lesson' + (paidOff ? ' <i class="soon">Opening soon</i>' : '') + '</b><span>Up to 3 clips and a personal video reply with drills.</span></div><em>' + money(c.price_pence) + '</em></div>');
       if (c.offers_monthly && c.monthly_price_pence) opts.push('<div class="lopt"><div><b>Monthly plan <i class="soon">Coming soon</i></b><span>Up to ' + c.monthly_videos_per_week + ' lesson' + (c.monthly_videos_per_week == 1 ? '' : 's') + ' a week with ' + esc(fn) + '.</span></div><em>' + money(c.monthly_price_pence) + '<small>/month</small></em></div>');
       var lessonsSec = opts.length ? '<section class="cpsec"><div class="lab">Lessons</div><div class="lopts">' + opts.join('') + '</div></section>' : '';
       var specs = (c.specialities || []).length ? '<section class="cpsec"><div class="lab">Specialities</div><ul class="ticks">' +
@@ -760,9 +761,10 @@
         ? '<div id="revs">' + reviews.slice(0, shown).map(reviewHtml).join('') + '</div>' + (reviews.length > shown ? '<button class="btn sm" id="allrevs" style="align-self:flex-start">Show all ' + reviews.length + ' reviews</button>' : '')
         : '<p class="muted">No reviews yet. Be the first to book a lesson with ' + esc(fn) + '.</p>') + '</section>';
 
-      var bookable = c.offers_single || (c.offers_free && freeOk);
+      var singleOk = c.offers_single && !paidOff;
+      var bookable = singleOk || (c.offers_free && freeOk);
       var bar = canBook && bookable
-        ? '<div class="cpbar"><div class="price">' + (c.offers_free && freeOk ? '<b>Free trial</b><span>' + (c.offers_single ? 'then ' + money(c.price_pence) + ' per lesson' : 'one per player') + '</span>' : '<b>' + money(c.price_pence) + '</b><span>per lesson</span>') + '</div><a class="btn acc big" href="' + bookHref + '">' + (c.offers_free && freeOk ? 'Try a free lesson' : 'Book a lesson') + '</a></div>'
+        ? '<div class="cpbar"><div class="price">' + (c.offers_free && freeOk ? '<b>Free trial</b><span>' + (singleOk ? 'then ' + money(c.price_pence) + ' per lesson' : 'one per player') + '</span>' : '<b>' + money(c.price_pence) + '</b><span>per lesson</span>') + '</div><a class="btn acc big" href="' + bookHref + '">' + (c.offers_free && freeOk ? 'Try a free lesson' : 'Book a lesson') + '</a></div>'
         : (isMe ? '<div class="cpbar"><div class="price"><b>Your profile</b><span>' + (preview ? 'Only you can see it until approved' : 'This is what players see') + '</span></div><button class="btn" id="share">Copy link</button><a class="btn acc" href="#/profile">Edit</a></div>' : '');
 
       render(shell('coaches',
@@ -781,14 +783,89 @@
 
   /* ================================================================ booking */
 
+  function bookingOptions(id) {
+    return rpc('booking_options', { p_coach: id }).then(function (o) { return o || {}; }).catch(function () { return {}; });
+  }
+
+  /* After the Stripe payment page */
+  function pagePaid(lessonId) {
+    if (!needPlayer()) return;
+    var t = ++navToken, tries = 0;
+    var cancelled = /cancelled=1/.test(location.hash);
+    render(shell('lessons', '<div class="empty"><span class="spinner" aria-hidden="true"></span><h2>Checking your payment…</h2></div>', { narrow: true }));
+    function check() {
+      rpc('confirm_lesson_payment', { p_lesson: lessonId }).then(function (r) {
+        if (t !== navToken) return;
+        if (r.status === 'paid') { toast('Paid. Your lesson is with ' + firstName(r.coach_name) + '.'); return go('#/space/' + r.coach_id); }
+        if (r.status === 'missing') { render(shell('lessons', '<div class="empty"><h2>This booking has gone</h2><p class="muted">It was cancelled or not paid for.</p><a class="btn acc" href="#/coaches">See coaches</a></div>', { narrow: true })); return; }
+        if (!cancelled && ++tries < 4) return setTimeout(check, 2000);
+        var fn = firstName(r.coach_name) || 'your coach';
+        render(shell('lessons', '<div class="empty"><h2>Your payment is not finished</h2><p class="muted">Your lesson with ' + esc(fn) + ' is saved with your videos. It goes to ' + esc(fn) + ' once you pay ' + money(r.price_pence) + '.</p>' +
+          '<div class="acts" style="justify-content:center;flex-wrap:wrap"><button class="btn acc big" id="pay">Pay now</button><button class="btn" id="cancel">Cancel booking</button></div><p class="err" id="e" hidden></p></div>', { narrow: true }));
+        $('#pay').onclick = function () {
+          var b = this; b.disabled = true; b.textContent = 'Opening…';
+          rpc('lesson_checkout', { p_lesson: lessonId }).then(function (url) { if (url) location.href = url; else { cancelled = false; tries = 0; check(); } })
+            .catch(function (err) { $('#e').textContent = err.message; $('#e').hidden = false; b.disabled = false; b.textContent = 'Pay now'; });
+        };
+        $('#cancel').onclick = function () {
+          this.disabled = true;
+          rpc('cancel_pending_lesson', { p_lesson: lessonId }).then(function () { toast('Booking cancelled'); go('#/coach/' + r.coach_id); })
+            .catch(function (err) { $('#e').textContent = err.message; $('#e').hidden = false; });
+        };
+      }).catch(function (e) { if (t === navToken) failed('lessons', e); });
+    }
+    check();
+  }
+
+  /* Coach payouts (Stripe Connect Express) */
+  function pagePayouts() {
+    if (!needPlayer()) return;
+    if (me.role !== 'coach') return go('#/');
+    var t = ++navToken;
+    loading('earnings');
+    rpc('coach_payout_status').then(function (st) {
+      if (t !== navToken) return;
+      st = st || {};
+      if (me.coach && st.ready != null) me.coach.payouts_ready = !!st.ready;
+      var steps = '<ul class="ticks" style="margin:0">' + ['Your name, date of birth and home address (Stripe checks who you are)', 'The bank account you want to be paid into', 'About 5 minutes'].map(function (x) { return '<li>' + I.lock + esc(x) + '</li>'; }).join('') + '</ul>';
+      var body;
+      if (!st.payments) {
+        body = '<div class="panel"><h3>Not switched on yet</h3><p class="muted">Card payments are not live yet. We will let you know when you can set up payouts.</p></div>';
+      } else if (st.ready) {
+        body = '<div class="notice accb">' + I.lock + '<span><b>Payouts are set up.</b> Players can book paid lessons with you.</span></div>' +
+          '<div class="panel" style="display:flex;flex-direction:column;gap:12px"><h3>How you get paid</h3><p class="muted" style="margin:0">When you reply to a lesson, your share (the lesson price minus Padelent’s ' + (C.platformFeePercent || 20) + '%) is sent to your Stripe account. Stripe then pays it into your bank automatically.</p>' +
+          (st.payouts_enabled === false ? '<p class="small" style="color:var(--amber);margin:0">Stripe needs a bit more information before it can pay into your bank. Open your Stripe dashboard to finish.</p>' : '') +
+          '<div class="acts"><button class="btn acc" id="dash">Open Stripe dashboard</button><a class="btn" href="#/earnings">See earnings</a></div><p class="err" id="e" hidden></p></div>';
+      } else {
+        body = '<div class="panel" style="display:flex;flex-direction:column;gap:14px"><h3>' + (st.has_account && st.details_submitted ? 'Stripe is checking your details' : st.has_account ? 'Finish setting up payouts' : 'Set up payouts') + '</h3>' +
+          (st.has_account && st.details_submitted ? '<p class="muted" style="margin:0">This usually takes a few minutes. If Stripe needs anything else, tap the button below.</p>'
+            : '<p class="muted" style="margin:0">Padelent uses Stripe to pay coaches. Stripe keeps your bank details, so Padelent never sees them. You will need:</p>' + steps) +
+          '<div class="acts"><button class="btn acc big" id="setup">' + (st.has_account ? 'Continue with Stripe' : 'Set up payouts with Stripe') + '</button>' + (st.has_account ? '<button class="btn" id="recheck">Check again</button>' : '') + '</div><p class="err" id="e" hidden></p></div>';
+      }
+      render(shell('earnings', '<a class="back" href="#/earnings">‹ Earnings</a><div><h1>Payouts</h1><p class="muted" style="margin-top:6px">Get paid for your lessons, straight to your bank.</p></div>' + body, { narrow: true }));
+      function linkBtn(id, fnName) {
+        var b = $(id); if (!b) return;
+        b.onclick = function () {
+          var label = b.textContent; b.disabled = true; b.textContent = 'Opening Stripe…';
+          rpc(fnName).then(function (url) { location.href = url; })
+            .catch(function (err) { $('#e').textContent = err.message; $('#e').hidden = false; b.disabled = false; b.textContent = label; });
+        };
+      }
+      linkBtn('#setup', 'coach_payout_link');
+      linkBtn('#dash', 'coach_dashboard_link');
+      if ($('#recheck')) $('#recheck').onclick = function () { pagePayouts(); };
+    }).catch(function (e) { if (t === navToken) failed('earnings', e); });
+  }
+
   function pageBook(id) {
     if (!needPlayer()) return;
     if (me.role !== 'player') { render(shell('home', '<div class="empty"><h2>Coach accounts cannot book lessons</h2><p class="muted">Make a separate player account to try it as a player.</p></div>')); return; }
     var t = ++navToken;
     loading('coaches');
-    Promise.all([rest('coach_cards?select=*&id=eq.' + encodeURIComponent(id)), rpc('free_lesson_available', { p_coach: id }).catch(function () { return false; })]).then(function (res) {
+    Promise.all([rest('coach_cards?select=*&id=eq.' + encodeURIComponent(id)), bookingOptions(id)]).then(function (res) {
       if (t !== navToken) return;
-      var c = res[0] && res[0][0], freeOk = !!res[1];
+      var c = res[0] && res[0][0], opts = res[1], freeOk = !!opts.free_available;
+      if (c && opts.payments && !opts.paid_ready) c = Object.assign({}, c, { offers_single: false });
       if (!c || !(c.offers_single || (c.offers_free && freeOk))) { render(shell('coaches', '<div class="empty"><h2>' + (c && c.offers_free && !c.offers_single ? 'You have already had your free lesson with ' + esc(firstName(c.full_name)) : 'This coach is not taking lessons right now') + '</h2><a class="btn acc" href="#/coaches">See all coaches</a></div>')); return; }
       var fn = firstName(c.full_name);
       var kind = c.offers_free && freeOk ? 'free' : 'single';
@@ -822,7 +899,7 @@
         $('#sumprice').textContent = free ? 'Free' : money(c.price_pence);
         var n = $('#sumnote');
         if (free) { n.textContent = 'No payment needed. You can have one free lesson with each coach.'; n.style.color = ''; n.className = 'small muted'; }
-        else if (C.paymentsEnabled) { n.textContent = 'You pay securely by card on the next step.'; n.className = 'small muted'; }
+        else if (opts.payments) { n.textContent = 'You pay securely by card with Stripe on the next step. If ' + fn + ' has not replied within 7 days, you get a full refund.'; n.className = 'small muted'; }
         else { n.textContent = 'Test mode: card payments are not switched on yet, so this lesson is free.'; n.className = 'small'; n.style.color = 'var(--acc)'; n.style.fontWeight = '700'; }
       }
       $$('#kinds .lopt').forEach(function (b) { b.onclick = function () { kind = b.getAttribute('data-kind'); $$('#kinds .lopt').forEach(function (x) { x.classList.toggle('on', x === b); }); summary(); }; });
@@ -843,7 +920,14 @@
         picker.uploadAll().then(function (paths) {
           b.textContent = 'Sending…';
           return rpc('book_lesson', { p_coach: c.id, p_topic: topic, p_body: f.body.value, p_videos: paths, p_kind: kind });
-        }).then(function () {
+        }).then(function (lessonId) {
+          if (kind !== 'free' && opts.payments) {
+            b.textContent = 'Opening secure payment…';
+            return rpc('lesson_checkout', { p_lesson: lessonId }).then(function (url) {
+              if (url) { location.href = url; return new Promise(function () {}); }
+              go('#/paid/' + lessonId);
+            });
+          }
           toast('Sent to ' + fn + '. You will see the reply in My lessons.');
           go('#/space/' + c.id);
         }).catch(function (err) {
@@ -877,7 +961,7 @@
       var tab = store.get('padelent.feedtab') || 'all';
       var c = me.coach || {};
       render(shell('lessons',
-        (!c.approved ? approvalNotice() : '') +
+        (!c.approved ? approvalNotice() : '') + payoutNotice() +
         '<div><h1>Lessons</h1><p class="muted" style="margin-top:6px">Newest first. Tap a player to open your lessons with them.</p></div>' +
         '<div class="stats"><div class="stat"><div class="muted small">New lessons</div><div class="v">' + n['new'] + '</div></div>' +
         '<div class="stat"><div class="muted small">Awaiting your reply</div><div class="v">' + n.awaiting + '</div></div>' +
@@ -905,6 +989,13 @@
       });
       draw();
     }).catch(function (e) { if (t === navToken) failed('lessons', e); });
+  }
+
+  function paymentsLive() { return !!(me && me.payments_live); }
+  function payoutNotice() {
+    var c = (me && me.coach) || {};
+    if (!paymentsLive() || c.payouts_ready) return '';
+    return '<div class="notice warn">' + I.info + '<span><b>Set up payouts to take paid lessons.</b> It takes about 5 minutes with Stripe, and then players can book and pay you. <a href="#/payouts">Set up payouts</a></span></div>';
   }
 
   function approvalNotice() {
@@ -1242,7 +1333,7 @@
   function coachProfileForm() {
     var c = me.coach || {};
     render(shell('profile',
-      (!c.approved ? approvalNotice() : '<div class="notice accb">' + I.lock.replace('stroke="#D7F23A"', 'stroke="#D7F23A"') + '<span><b>You are live.</b> Players can find and book you. <a href="#/coach/' + me.id + '">View your public profile</a></span></div>') +
+      payoutNotice() + (!c.approved ? approvalNotice() : '<div class="notice accb">' + I.lock.replace('stroke="#D7F23A"', 'stroke="#D7F23A"') + '<span><b>You are live.</b> Players can find and book you. <a href="#/coach/' + me.id + '">View your public profile</a></span></div>') +
       '<div style="display:flex;justify-content:space-between;align-items:flex-end;gap:12px;flex-wrap:wrap"><h1>My coach profile</h1><div style="display:flex;gap:8px;flex-wrap:wrap"><button type="button" class="btn sm acc" id="share">Copy profile link</button><a class="btn sm" href="#/coach/' + me.id + '">' + (c.approved ? 'View public profile' : 'Preview') + '</a></div></div>' +
       '<p class="muted small" style="margin-top:-24px">Share your link on Instagram so your own players can book you.' + (c.approved ? '' : ' It works once we approve your profile.') + '</p>' +
       '<form class="form" id="f">' +
@@ -1336,12 +1427,13 @@
     loading('earnings');
     rpc('coach_feed').then(function (feed) {
       if (t !== navToken) return;
-      var done = (feed || []).filter(function (l) { return l.status === 'done'; });
+      var done = (feed || []).filter(function (l) { return l.status === 'done' && !l.refunded_at; });
       var total = done.reduce(function (s, l) { return s + l.price_pence - l.platform_fee_pence; }, 0);
       var now = new Date(), m0 = new Date(now.getFullYear(), now.getMonth(), 1);
       var month = done.filter(function (l) { return new Date(l.created_at) >= m0; }).reduce(function (s, l) { return s + l.price_pence - l.platform_fee_pence; }, 0);
       render(shell('earnings', '<div><h1>Earnings</h1><p class="muted" style="margin-top:6px">What you earn from finished lessons, after Padelent’s ' + (C.platformFeePercent || 20) + '% share.</p></div>' +
-        (!C.paymentsEnabled ? '<div class="notice warn">' + I.info + '<span>Card payments are not switched on yet, so lessons are free while we test. Payouts to your bank start when payments go live.</span></div>' : '') +
+        (!paymentsLive() ? '<div class="notice warn">' + I.info + '<span>Card payments are not switched on yet, so lessons are free while we test. Payouts to your bank start when payments go live.</span></div>'
+          : (me.coach && me.coach.payouts_ready ? '<div class="notice accb">' + I.lock + '<span>You are paid your share as soon as you reply to a lesson. Stripe sends it to your bank. <a href="#/payouts">Payouts and bank details</a></span></div>' : payoutNotice())) +
         '<div class="stats" style="grid-template-columns:repeat(3,1fr)"><div class="stat"><div class="muted small">This month</div><div class="v">' + money(month) + '</div></div>' +
         '<div class="stat"><div class="muted small">All time</div><div class="v">' + money(total) + '</div></div>' +
         '<div class="stat"><div class="muted small">Lessons done</div><div class="v">' + done.length + '</div></div></div>' +
@@ -1521,6 +1613,8 @@
     if (path === '#/lessons') return pageLessons();
     if (path === '#/profile') return pageProfile();
     if (path === '#/earnings') return pageEarnings();
+    if (path === '#/payouts') return pagePayouts();
+    if ((m = /^#\/paid\/([0-9a-f-]{36})$/.exec(path))) return pagePaid(m[1]);
     if (path === '#/admin') return pageAdmin();
     if (path === '#/admin/messages') return pageAdminMessages();
     if ((m = /^#\/admin\/chat\/([0-9a-f-]{36})$/.exec(path))) return pageAdminChat(m[1]);

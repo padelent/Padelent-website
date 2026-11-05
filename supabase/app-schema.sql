@@ -75,6 +75,16 @@ alter table public.lessons add column if not exists kind text not null default '
 -- After a lesson is done, player and coach can keep chatting until the coach closes it.
 alter table public.lessons add column if not exists closed_at timestamptz;
 alter table public.lessons add column if not exists needs_coach boolean not null default false;
+
+-- Card payments (Stripe). Players pay Padelent; the coach's share is sent once they reply.
+alter table public.coaches add column if not exists stripe_account_id text;
+alter table public.coaches add column if not exists payouts_ready boolean not null default false;
+alter table public.lessons add column if not exists payment_intent text;
+alter table public.lessons add column if not exists charge_id text;
+alter table public.lessons add column if not exists transfer_id text;
+alter table public.lessons add column if not exists transferred_at timestamptz;
+alter table public.lessons add column if not exists transfer_error text;
+alter table public.lessons add column if not exists refunded_at timestamptz;
 create index if not exists lessons_coach_idx on public.lessons (coach_id, created_at desc);
 create index if not exists lessons_player_idx on public.lessons (player_id, created_at desc);
 
@@ -144,9 +154,12 @@ create policy "reviews are public" on public.reviews for select to anon, authent
 create or replace function public.platform_fee_percent() returns int
 language sql immutable as $$ select 20 $$;
 
--- Switch to true once Stripe is connected: lessons then wait for payment before the coach sees them.
+-- Card payments switch on by themselves once the Stripe key is saved in the vault
+-- (secret name 'stripe_secret_key'). Paid lessons then wait for payment before the coach sees them.
 create or replace function public.payments_required() returns boolean
-language sql immutable as $$ select false $$;
+language sql stable security definer set search_path = public as $$
+  select exists (select 1 from vault.decrypted_secrets where name = 'stripe_secret_key' and coalesce(decrypted_secret, '') like 'sk\_%')
+$$;
 
 -- ---------- New accounts ---------------------------------------------
 
@@ -207,7 +220,7 @@ declare v_uid uuid := auth.uid(); v json;
 begin
   if v_uid is null then return null; end if;
   select json_build_object(
-    'id', p.id, 'role', p.role, 'full_name', p.full_name, 'is_admin', p.is_admin,
+    'id', p.id, 'role', p.role, 'full_name', p.full_name, 'is_admin', p.is_admin, 'payments_live', public.payments_required(),
     'coach', (select row_to_json(c) from public.coaches c where c.id = p.id),
     'player', (select row_to_json(pl) from public.players pl where pl.id = p.id)
   ) into v from public.profiles p where p.id = v_uid;
@@ -294,6 +307,9 @@ begin
   elsif p_kind = 'single' then
     if not c.offers_single then raise exception 'This coach does not offer single lessons right now.'; end if;
     v_price := c.price_pence;
+    if public.payments_required() and not c.payouts_ready then
+      raise exception '% is still setting up card payments, so paid lessons are not open yet.', coalesce(nullif(split_part((select full_name from public.profiles where id = p_coach), ' ', 1), ''), 'This coach');
+    end if;
   elsif p_kind = 'monthly' then
     raise exception 'Monthly plans start when card payments go live.';
   else
@@ -306,8 +322,11 @@ begin
     if split_part(v, '/', 1) <> v_uid::text then raise exception 'Video upload not recognised.'; end if;
   end loop;
 
-  update public.lessons set closed_at = now(), needs_coach = false
-  where player_id = v_uid and coach_id = p_coach and status = 'done' and closed_at is null;
+  -- A new lesson closes the follow-up chat on the last one (paid lessons do this once payment arrives).
+  if not (public.payments_required() and v_price > 0) then
+    update public.lessons set closed_at = now(), needs_coach = false
+    where player_id = v_uid and coach_id = p_coach and status = 'done' and closed_at is null;
+  end if;
 
   insert into public.lessons (player_id, coach_id, topic, status, price_pence, platform_fee_pence, kind)
   values (v_uid, p_coach, left(trim(p_topic), 140),
@@ -406,7 +425,7 @@ end $$;
 create or replace function public.coach_feed() returns json
 language sql stable security definer set search_path = public as $$
   select coalesce(json_agg(x order by x.created_at desc), '[]'::json) from (
-    select l.id, l.player_id, l.topic, l.status, l.created_at, l.price_pence, l.platform_fee_pence, l.closed_at, l.needs_coach, l.kind,
+    select l.id, l.player_id, l.topic, l.status, l.created_at, l.price_pence, l.platform_fee_pence, l.closed_at, l.needs_coach, l.kind, l.refunded_at, l.transferred_at,
            p.full_name as player_name, pl.level, pl.side, pl.hand,
            (select count(*) from public.lessons l2 where l2.player_id = l.player_id and l2.coach_id = l.coach_id
               and l2.status <> 'pending_payment' and l2.created_at <= l.created_at) as nth,
