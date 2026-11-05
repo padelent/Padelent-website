@@ -134,12 +134,15 @@ begin
     a := public.stripe_v2('POST', 'core/accounts', jsonb_build_object(
       'contact_email', v_email,
       'display_name', coalesce(nullif((select full_name from public.profiles where id = v_uid), ''), 'Padelent coach'),
-      'identity', jsonb_build_object('country', 'GB', 'entity_type', 'individual'),
+      'identity', jsonb_build_object('country', 'GB', 'entity_type', 'individual',
+        'business_details', jsonb_build_object(
+          'product_description', 'Online padel coaching. Personal video lessons sold through Padelent.',
+          'url', 'https://padelent.com/coach/' || v_uid)),
       'dashboard', 'express',
       'defaults', jsonb_build_object('responsibilities', jsonb_build_object('fees_collector', 'application', 'losses_collector', 'application')),
       'configuration', jsonb_build_object('recipient', jsonb_build_object('capabilities', jsonb_build_object(
         'stripe_balance', jsonb_build_object('stripe_transfers', jsonb_build_object('requested', true))))),
-      'metadata', jsonb_build_object('padelent_coach', v_uid::text)), 'padelent-acct3-' || v_uid);
+      'metadata', jsonb_build_object('padelent_coach', v_uid::text)), 'padelent-acct4-' || v_uid);
     update public.coaches set stripe_account_id = a->>'id' where id = v_uid;
     c.stripe_account_id := a->>'id';
   end if;
