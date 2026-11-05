@@ -65,6 +65,29 @@ end $$;
 
 revoke execute on function public.stripe(text, text, jsonb, text) from public, anon, authenticated;
 
+-- Stripe's newer v2 API (JSON). Used for coach accounts.
+create or replace function public.stripe_v2(p_method text, p_path text, p_body jsonb default null, p_idem text default null)
+returns jsonb
+language plpgsql security definer set search_path = public, extensions as $$
+declare v_key text; h extensions.http_header[]; r extensions.http_response; j jsonb;
+begin
+  select decrypted_secret into v_key from vault.decrypted_secrets where name = 'stripe_secret_key' limit 1;
+  if v_key is null then raise exception 'Card payments are not set up yet.'; end if;
+  h := array[row('Authorization', 'Bearer ' || v_key)::extensions.http_header,
+             row('Stripe-Version', '2026-10-28.endive')::extensions.http_header];
+  if p_idem is not null then h := h || row('Idempotency-Key', p_idem)::extensions.http_header; end if;
+  r := extensions.http(row(p_method, 'https://api.stripe.com/v2/' || p_path, h,
+         case when p_method = 'GET' then null else 'application/json' end,
+         case when p_method = 'GET' then null else coalesce(p_body, '{}'::jsonb)::text end)::extensions.http_request);
+  begin j := r.content::jsonb; exception when others then j := '{}'::jsonb; end;
+  if r.status >= 400 then
+    raise exception 'Payment problem: %', coalesce(j->'error'->>'message', 'Stripe error ' || r.status);
+  end if;
+  return j;
+end $$;
+
+revoke execute on function public.stripe_v2(text, text, jsonb, text) from public, anon, authenticated;
+
 -- ---------- Coaches: getting paid ---------------------------------------------
 
 -- Refresh a coach's payout status from Stripe.
@@ -74,14 +97,14 @@ declare v_acct text; a jsonb; v_ready boolean;
 begin
   select stripe_account_id into v_acct from public.coaches where id = p_coach;
   if v_acct is null then return null; end if;
-  a := public.stripe('GET', 'accounts/' || v_acct);
-  v_ready := coalesce(a->'capabilities'->>'transfers', '') = 'active';
+  a := public.stripe_v2('GET', 'core/accounts/' || v_acct || '?include=configuration.recipient');
+  v_ready := coalesce(a#>>'{configuration,recipient,capabilities,stripe_balance,stripe_transfers,status}', '') = 'active';
   update public.coaches set payouts_ready = v_ready where id = p_coach and payouts_ready is distinct from v_ready;
   return jsonb_build_object(
     'ready', v_ready,
-    'details_submitted', coalesce((a->>'details_submitted')::boolean, false),
-    'payouts_enabled', coalesce((a->>'payouts_enabled')::boolean, false),
-    'due', coalesce(jsonb_array_length(a->'requirements'->'currently_due'), 0));
+    'details_submitted', v_ready or coalesce(a#>>'{configuration,recipient,capabilities,stripe_balance,stripe_transfers,status_details,0,code}', '') = 'requirements_pending_verification',
+    'payouts_enabled', v_ready,
+    'due', coalesce(jsonb_array_length(a->'requirements'->'entries'), 0));
 end $$;
 
 revoke execute on function public.refresh_coach_payouts(uuid) from public, anon, authenticated;
@@ -108,27 +131,24 @@ begin
   if c.id is null then raise exception 'Only coach accounts have payouts.'; end if;
   if c.stripe_account_id is null then
     select email into v_email from auth.users where id = v_uid;
-    a := public.stripe('POST', 'accounts', jsonb_build_object(
-      'controller[stripe_dashboard][type]', 'express',
-      'controller[fees][payer]', 'application',
-      'controller[losses][payments]', 'application',
-      'controller[requirement_collection]', 'stripe',
-      'country', 'GB',
-      'email', v_email,
-      'business_type', 'individual',
-      'capabilities[transfers][requested]', 'true',
-      'business_profile[mcc]', '8299',
-      'business_profile[product_description]', 'Online padel coaching: personal video lessons sold through Padelent.',
-      'business_profile[url]', 'https://padelent.com/coach/' || v_uid,
-      'metadata[padelent_coach]', v_uid::text), 'padelent-acct2-' || v_uid);
+    a := public.stripe_v2('POST', 'core/accounts', jsonb_build_object(
+      'contact_email', v_email,
+      'display_name', coalesce(nullif((select full_name from public.profiles where id = v_uid), ''), 'Padelent coach'),
+      'identity', jsonb_build_object('country', 'GB', 'entity_type', 'individual'),
+      'dashboard', 'express',
+      'defaults', jsonb_build_object('responsibilities', jsonb_build_object('fees_collector', 'application', 'losses_collector', 'application')),
+      'configuration', jsonb_build_object('recipient', jsonb_build_object('capabilities', jsonb_build_object(
+        'stripe_balance', jsonb_build_object('stripe_transfers', jsonb_build_object('requested', true))))),
+      'metadata', jsonb_build_object('padelent_coach', v_uid::text)), 'padelent-acct3-' || v_uid);
     update public.coaches set stripe_account_id = a->>'id' where id = v_uid;
     c.stripe_account_id := a->>'id';
   end if;
-  l := public.stripe('POST', 'account_links', jsonb_build_object(
+  l := public.stripe_v2('POST', 'core/account_links', jsonb_build_object(
     'account', c.stripe_account_id,
-    'type', 'account_onboarding',
-    'refresh_url', public.app_base() || '#/payouts',
-    'return_url', public.app_base() || '#/payouts'));
+    'use_case', jsonb_build_object('type', 'account_onboarding', 'account_onboarding', jsonb_build_object(
+      'refresh_url', public.app_base() || '#/payouts',
+      'return_url', public.app_base() || '#/payouts',
+      'collection_options', jsonb_build_object('fields', 'eventually_due')))));
   return l->>'url';
 end $$;
 
@@ -139,7 +159,11 @@ declare v_acct text;
 begin
   select stripe_account_id into v_acct from public.coaches where id = auth.uid();
   if v_acct is null then raise exception 'Set up payouts first.'; end if;
-  return public.stripe('POST', 'accounts/' || v_acct || '/login_links')->>'url';
+  begin
+    return public.stripe('POST', 'accounts/' || v_acct || '/login_links')->>'url';
+  exception when others then
+    return 'https://connect.stripe.com/express_login';
+  end;
 end $$;
 
 -- ---------- Players: paying for a lesson ---------------------------------------------
