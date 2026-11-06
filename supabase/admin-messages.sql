@@ -21,6 +21,12 @@ create table if not exists public.inbox_messages (
 );
 create index if not exists inbox_messages_user_idx on public.inbox_messages (user_id, created_at);
 alter table public.inbox_messages add column if not exists image_url text;
+alter table public.inbox_messages add column if not exists audio_path text;
+-- A message can be text, a voice note, or both.
+alter table public.inbox_messages drop constraint if exists inbox_messages_body_check;
+alter table public.inbox_messages drop constraint if exists inbox_messages_has_content;
+alter table public.inbox_messages add constraint inbox_messages_has_content
+  check (char_length(body) <= 5000 and (char_length(body) >= 1 or audio_path is not null));
 
 create table if not exists public.broadcasts (
   id uuid primary key default gen_random_uuid(),
@@ -31,9 +37,40 @@ create table if not exists public.broadcasts (
   created_at timestamptz not null default now()
 );
 
+alter table public.broadcasts add column if not exists audio_path text;
 alter table public.inbox_messages enable row level security;
 alter table public.broadcasts enable row level security;
 revoke all on public.inbox_messages, public.broadcasts from anon, authenticated;
+
+-- ---------- Voice notes ----------
+-- Recorded in the app, stored privately. Only the people in that chat (and you) can play them.
+insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+values ('voice-notes', 'voice-notes', false, 10485760,
+        array['audio/webm', 'audio/mp4', 'audio/mpeg', 'audio/ogg', 'audio/aac', 'audio/x-m4a', 'audio/wav'])
+on conflict (id) do update set public = false, file_size_limit = 10485760;
+
+-- A voice note must be one the sender uploaded to their own folder.
+create or replace function public.check_voice_note(p_audio text) returns text
+language plpgsql stable security definer set search_path = public as $$
+begin
+  if coalesce(p_audio, '') = '' then return null; end if;
+  if split_part(p_audio, '/', 1) <> auth.uid()::text or p_audio like '%..%' then raise exception 'That voice note could not be sent.'; end if;
+  return p_audio;
+end $$;
+
+create or replace function public.can_hear_voice_note(p_name text) returns boolean
+language sql stable security definer set search_path = public as $$
+  select public.is_admin() or exists (
+    select 1 from public.inbox_messages m where m.audio_path = p_name and auth.uid() in (m.user_id, m.sender_id))
+$$;
+
+drop policy if exists "padelent voice note upload" on storage.objects;
+create policy "padelent voice note upload" on storage.objects for insert to authenticated
+  with check (bucket_id = 'voice-notes' and (storage.foldername(name))[1] = auth.uid()::text);
+
+drop policy if exists "padelent voice note listen" on storage.objects;
+create policy "padelent voice note listen" on storage.objects for select to authenticated
+  using (bucket_id = 'voice-notes' and ((storage.foldername(name))[1] = auth.uid()::text or public.can_hear_voice_note(name)));
 
 -- ---------- Email helpers ----------
 
@@ -103,43 +140,50 @@ begin
   select json_build_object(
     'admin_name', public.admin_name(),
     'messages', coalesce((select json_agg(json_build_object(
-        'id', m.id, 'mine', m.sender_id = v_uid, 'body', m.body, 'created_at', m.created_at, 'broadcast', m.broadcast_id is not null, 'image_url', m.image_url)
+        'id', m.id, 'mine', m.sender_id = v_uid, 'body', m.body, 'created_at', m.created_at, 'broadcast', m.broadcast_id is not null, 'image_url', m.image_url, 'audio_path', m.audio_path)
       order by m.created_at) from public.inbox_messages m where m.user_id = v_uid), '[]'::json))
   into v;
   update public.inbox_messages set read_by_user = true where user_id = v_uid and not read_by_user;
   return v;
 end $$;
 
-create or replace function public.send_inbox_message(p_body text) returns void
+drop function if exists public.send_inbox_message(text);
+create or replace function public.send_inbox_message(p_body text, p_audio text default null) returns void
 language plpgsql security definer set search_path = public as $$
-declare v_uid uuid := auth.uid(); v_name text; v_email text;
+declare v_uid uuid := auth.uid(); v_name text; v_email text; v_body text := left(coalesce(trim(p_body), ''), 5000);
 begin
   if v_uid is null then raise exception 'Please log in again.'; end if;
-  if coalesce(trim(p_body), '') = '' then raise exception 'Write a message first.'; end if;
-  insert into public.inbox_messages (user_id, sender_id, body, read_by_user, read_by_admin)
-  values (v_uid, v_uid, left(trim(p_body), 5000), true, false);
+  p_audio := public.check_voice_note(p_audio);
+  if v_body = '' and p_audio is null then raise exception 'Write a message or record a voice note first.'; end if;
+  insert into public.inbox_messages (user_id, sender_id, body, audio_path, read_by_user, read_by_admin)
+  values (v_uid, v_uid, v_body, p_audio, true, false);
   select p.full_name, u.email into v_name, v_email from public.profiles p join auth.users u on u.id = p.id where p.id = v_uid;
   perform public.send_padelent_email('info@padelent.com',
     'Reply from ' || coalesce(nullif(v_name, ''), v_email),
     coalesce(nullif(v_name, ''), v_email) || ' replied',
-    array[left(trim(p_body), 600)],
+    array_remove(array[nullif(left(v_body, 600), ''), case when p_audio is not null then '🎙️ They sent you a voice note.' end], null),
     'Open in Admin', 'https://padelent.com/app/#/admin/chat/' || v_uid);
 end $$;
 
 -- ---------- For you (admin) ----------
 
-create or replace function public.admin_broadcast(p_audience text, p_body text) returns int
+drop function if exists public.admin_broadcast(text, text);
+create or replace function public.admin_broadcast(p_audience text, p_body text, p_audio text default null) returns int
 language plpgsql security definer set search_path = public as $$
 declare v_uid uuid := auth.uid(); v_b uuid; v_n int; v_from text := public.admin_name(); v_emails jsonb;
+        v_body text := left(coalesce(trim(p_body), ''), 5000); v_paras text[];
 begin
   if not public.is_admin() then raise exception 'Admins only.'; end if;
   if p_audience not in ('coaches', 'players', 'everyone') then raise exception 'Pick who to send it to.'; end if;
-  if coalesce(trim(p_body), '') = '' then raise exception 'Write a message first.'; end if;
+  p_audio := public.check_voice_note(p_audio);
+  if v_body = '' and p_audio is null then raise exception 'Write a message or record a voice note first.'; end if;
+  v_paras := case when v_body = '' then array[]::text[] else regexp_split_to_array(v_body, '\n\s*\n') end
+             || case when p_audio is not null then array['🎙️ I''ve sent you a voice note. Tap the button below to listen in the app.'] else array[]::text[] end;
 
-  insert into public.broadcasts (audience, body, created_by) values (p_audience, trim(p_body), v_uid) returning id into v_b;
+  insert into public.broadcasts (audience, body, audio_path, created_by) values (p_audience, v_body, p_audio, v_uid) returning id into v_b;
 
-  insert into public.inbox_messages (user_id, sender_id, body, broadcast_id, read_by_user, read_by_admin)
-  select p.id, v_uid, left(trim(p_body), 5000), v_b, false, true
+  insert into public.inbox_messages (user_id, sender_id, body, audio_path, broadcast_id, read_by_user, read_by_admin)
+  select p.id, v_uid, v_body, p_audio, v_b, false, true
   from public.profiles p
   where p.id <> v_uid
     and (p_audience = 'everyone' or (p_audience = 'coaches' and p.role = 'coach') or (p_audience = 'players' and p.role = 'player'));
@@ -150,11 +194,11 @@ begin
       'from', 'Padelent <info@padelent.com>',
       'to', jsonb_build_array(u.email),
       'reply_to', 'info@padelent.com',
-      'subject', 'A message from ' || v_from || ' at Padelent',
+      'subject', case when p_audio is not null then v_from || ' sent you a voice note on Padelent' else 'A message from ' || v_from || ' at Padelent' end,
       'html', public.padelent_email_html('Hi ' || coalesce(nullif(split_part(trim(p.full_name), ' ', 1), ''), 'there') || ',',
-                regexp_split_to_array(trim(p_body), '\n\s*\n') || array['— ' || v_from || ', Padelent'],
-                'Reply in the app', 'https://padelent.com/app/#/inbox'),
-      'text', trim(p_body) || chr(10) || chr(10) || '— ' || v_from || ', Padelent' || chr(10) || 'Reply in the app: https://padelent.com/app/#/inbox')), '[]'::jsonb)
+                v_paras || array['— ' || v_from || ', Padelent'],
+                case when p_audio is not null then 'Listen in the app' else 'Reply in the app' end, 'https://padelent.com/app/#/inbox'),
+      'text', array_to_string(v_paras, chr(10) || chr(10)) || chr(10) || chr(10) || '— ' || v_from || ', Padelent' || chr(10) || 'Open the app: https://padelent.com/app/#/inbox')), '[]'::jsonb)
     into v_emails
   from public.inbox_messages m join public.profiles p on p.id = m.user_id join auth.users u on u.id = m.user_id
   where m.broadcast_id = v_b and u.email is not null;
@@ -171,12 +215,12 @@ begin
     'counts', json_build_object(
       'coaches', (select count(*) from public.profiles where role = 'coach' and not is_admin),
       'players', (select count(*) from public.profiles where role = 'player' and not is_admin)),
-    'broadcasts', coalesce((select json_agg(json_build_object('audience', audience, 'body', body, 'recipients', recipients, 'created_at', created_at) order by created_at desc)
+    'broadcasts', coalesce((select json_agg(json_build_object('audience', audience, 'body', body, 'voice', audio_path is not null, 'recipients', recipients, 'created_at', created_at) order by created_at desc)
        from (select * from public.broadcasts order by created_at desc limit 5) b), '[]'::json),
     'threads', coalesce((select json_agg(x order by x.unread > 0 desc, x.last_at desc) from (
       select m.user_id, p.full_name, p.role, u.email,
              max(m.created_at) as last_at,
-             (array_agg(m.body order by m.created_at desc))[1] as last_body,
+             (array_agg(coalesce(nullif(m.body, ''), '🎙️ Voice note') order by m.created_at desc))[1] as last_body,
              bool_or(m.sender_id = m.user_id) as replied,
              count(*) filter (where m.sender_id = m.user_id and not m.read_by_admin) as unread
       from public.inbox_messages m join public.profiles p on p.id = m.user_id join auth.users u on u.id = m.user_id
@@ -192,36 +236,38 @@ begin
   if not public.is_admin() then raise exception 'Admins only.'; end if;
   select json_build_object('user_id', p.id, 'full_name', p.full_name, 'role', p.role, 'email', u.email,
     'messages', coalesce((select json_agg(json_build_object('id', m.id, 'from_admin', m.sender_id <> m.user_id, 'body', m.body,
-        'created_at', m.created_at, 'broadcast', m.broadcast_id is not null, 'image_url', m.image_url) order by m.created_at)
+        'created_at', m.created_at, 'broadcast', m.broadcast_id is not null, 'image_url', m.image_url, 'audio_path', m.audio_path) order by m.created_at)
       from public.inbox_messages m where m.user_id = p.id), '[]'::json))
   into v from public.profiles p join auth.users u on u.id = p.id where p.id = p_user;
   update public.inbox_messages set read_by_admin = true where user_id = p_user and not read_by_admin;
   return v;
 end $$;
 
-create or replace function public.admin_send(p_user uuid, p_body text) returns void
+drop function if exists public.admin_send(uuid, text);
+create or replace function public.admin_send(p_user uuid, p_body text, p_audio text default null) returns void
 language plpgsql security definer set search_path = public as $$
-declare v_email text; v_first text; v_from text := public.admin_name();
+declare v_email text; v_first text; v_from text := public.admin_name(); v_body text := left(coalesce(trim(p_body), ''), 5000);
 begin
   if not public.is_admin() then raise exception 'Admins only.'; end if;
-  if coalesce(trim(p_body), '') = '' then raise exception 'Write a message first.'; end if;
-  insert into public.inbox_messages (user_id, sender_id, body, read_by_user, read_by_admin)
-  values (p_user, auth.uid(), left(trim(p_body), 5000), false, true);
+  p_audio := public.check_voice_note(p_audio);
+  if v_body = '' and p_audio is null then raise exception 'Write a message or record a voice note first.'; end if;
+  insert into public.inbox_messages (user_id, sender_id, body, audio_path, read_by_user, read_by_admin)
+  values (p_user, auth.uid(), v_body, p_audio, false, true);
   select u.email, coalesce(nullif(split_part(trim(p.full_name), ' ', 1), ''), 'there') into v_email, v_first
   from auth.users u join public.profiles p on p.id = u.id where u.id = p_user;
   perform public.send_padelent_email(v_email,
     'New message from ' || v_from || ' at Padelent',
     'Hi ' || v_first || ',',
-    array[left(trim(p_body), 1500), '— ' || v_from || ', Padelent'],
+    array_remove(array[nullif(left(v_body, 1500), ''), case when p_audio is not null then '🎙️ I''ve sent you a voice note. Tap the button below to listen in the app.' end, '— ' || v_from || ', Padelent'], null),
     'Reply in the app', 'https://padelent.com/app/#/inbox');
 end $$;
 
-revoke execute on function public.inbox_unread(), public.my_inbox(), public.send_inbox_message(text),
-  public.admin_broadcast(text, text), public.admin_conversations(), public.admin_thread(uuid), public.admin_send(uuid, text),
-  public.admin_name() from public, anon;
-grant execute on function public.inbox_unread(), public.my_inbox(), public.send_inbox_message(text),
-  public.admin_broadcast(text, text), public.admin_conversations(), public.admin_thread(uuid), public.admin_send(uuid, text),
-  public.admin_name() to authenticated;
+revoke execute on function public.inbox_unread(), public.my_inbox(), public.send_inbox_message(text, text),
+  public.admin_broadcast(text, text, text), public.admin_conversations(), public.admin_thread(uuid), public.admin_send(uuid, text, text),
+  public.admin_name(), public.check_voice_note(text), public.can_hear_voice_note(text) from public, anon;
+grant execute on function public.inbox_unread(), public.my_inbox(), public.send_inbox_message(text, text),
+  public.admin_broadcast(text, text, text), public.admin_conversations(), public.admin_thread(uuid), public.admin_send(uuid, text, text),
+  public.admin_name(), public.check_voice_note(text), public.can_hear_voice_note(text) to authenticated;
 
 -- ---------- Welcome message from you (the founder) ----------
 -- Players get it as soon as they sign up; coaches get it when you approve them.

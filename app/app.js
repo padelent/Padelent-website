@@ -177,16 +177,115 @@
   }
 
   var signCache = {};
-  function signedUrl(path) {
-    var c = signCache[path];
+  function signedUrl(path, bucket) {
+    bucket = bucket || 'lesson-videos';
+    var key = bucket + ':' + path, c = signCache[key];
     if (c && c.exp > Date.now()) return Promise.resolve(c.url);
-    return api('POST', '/storage/v1/object/sign/lesson-videos/' + encPath(path), { expiresIn: 3600 }).then(function (d) {
+    return api('POST', '/storage/v1/object/sign/' + bucket + '/' + encPath(path), { expiresIn: 3600 }).then(function (d) {
       var u = d && (d.signedURL || d.signedUrl);
-      if (!u) throw new Error('Video not available.');
+      if (!u) throw new Error('Not available.');
       if (u.indexOf('http') !== 0) u = SB + '/storage/v1' + (u.charAt(0) === '/' ? '' : '/') + u;
-      signCache[path] = { url: u, exp: Date.now() + 50 * 60 * 1000 };
+      signCache[key] = { url: u, exp: Date.now() + 50 * 60 * 1000 };
       return u;
     });
+  }
+  function hydrateAudio(root) {
+    $$('audio[data-voice]', root).forEach(function (a) {
+      signedUrl(a.getAttribute('data-voice'), 'voice-notes').then(function (u) { a.src = u; })
+        .catch(function () { a.outerHTML = '<div class="file small muted">This voice note could not be loaded.</div>'; });
+    });
+  }
+
+  /* Voice notes: hold-free recorder (tap to start, tap to stop), up to 2 minutes */
+  var VOICE_MAX = 120;
+  function voiceSupported() { return !!(window.MediaRecorder && navigator.mediaDevices && navigator.mediaDevices.getUserMedia); }
+  function voiceMime() {
+    var opts = ['audio/mp4', 'audio/webm;codecs=opus', 'audio/webm', 'audio/ogg;codecs=opus'];
+    for (var i = 0; i < opts.length; i++) { try { if (MediaRecorder.isTypeSupported(opts[i])) return opts[i]; } catch (e) {} }
+    return '';
+  }
+  function voiceRecorder(box) {
+    var st = { blob: null, rec: null, stream: null, timer: null, secs: 0, url: null };
+    function fmt(n) { return Math.floor(n / 60) + ':' + ('0' + (n % 60)).slice(-2); }
+    function idle() {
+      if (st.url) { URL.revokeObjectURL(st.url); st.url = null; }
+      st.blob = null;
+      box.innerHTML = voiceSupported() ? '<button type="button" class="btn sm vbtn" data-v="rec">🎙️ Record a voice note</button>' : '';
+      bind();
+    }
+    function recording() {
+      box.innerHTML = '<div class="vlive"><span class="vdot"></span><b data-v="t">0:00</b><span class="muted small">Recording… up to 2 minutes</span><button type="button" class="btn sm acc" data-v="stop">Stop</button><button type="button" class="btn sm" data-v="cancel">Cancel</button></div>';
+      bind();
+    }
+    function review() {
+      st.url = URL.createObjectURL(st.blob);
+      box.innerHTML = '<div class="vlive"><audio controls src="' + st.url + '"></audio><span class="muted small">' + fmt(st.secs) + '</span><button type="button" class="btn sm" data-v="del">Delete</button></div>';
+      bind();
+    }
+    function stopAll() {
+      clearInterval(st.timer);
+      if (st.stream) st.stream.getTracks().forEach(function (t) { t.stop(); });
+      st.stream = null;
+    }
+    function start() {
+      navigator.mediaDevices.getUserMedia({ audio: true }).then(function (stream) {
+        st.stream = stream; st.secs = 0;
+        var mime = voiceMime(), chunks = [];
+        var rec = mime ? new MediaRecorder(stream, { mimeType: mime, audioBitsPerSecond: 64000 }) : new MediaRecorder(stream);
+        st.rec = rec; rec.cancelled = false;
+        rec.ondataavailable = function (e) { if (e.data && e.data.size) chunks.push(e.data); };
+        rec.onstop = function () {
+          stopAll();
+          if (rec.cancelled || !chunks.length) return idle();
+          st.blob = new Blob(chunks, { type: (rec.mimeType || mime || 'audio/webm').split(';')[0] });
+          review();
+        };
+        rec.start(1000);
+        recording();
+        st.timer = setInterval(function () {
+          st.secs++;
+          var t = $('[data-v=t]', box); if (t) t.textContent = fmt(st.secs);
+          if (st.secs >= VOICE_MAX && rec.state === 'recording') rec.stop();
+        }, 1000);
+      }).catch(function () { toast('Allow microphone access to record a voice note.', true); idle(); });
+    }
+    function bind() {
+      $$('[data-v]', box).forEach(function (b) {
+        var a = b.getAttribute('data-v');
+        if (a === 'rec') b.onclick = start;
+        if (a === 'stop') b.onclick = function () { if (st.rec && st.rec.state === 'recording') st.rec.stop(); };
+        if (a === 'cancel') b.onclick = function () { if (st.rec) { st.rec.cancelled = true; if (st.rec.state === 'recording') st.rec.stop(); else idle(); } };
+        if (a === 'del') b.onclick = idle;
+      });
+    }
+    idle();
+    return {
+      blob: function () { return st.blob; },
+      busy: function () { return !!(st.rec && st.rec.state === 'recording'); },
+      // Uploads the note (if any) and resolves to its storage path, or null.
+      upload: function () {
+        if (!st.blob) return Promise.resolve(null);
+        var ext = /mp4|aac|m4a/.test(st.blob.type) ? 'm4a' : /ogg/.test(st.blob.type) ? 'ogg' : 'webm';
+        var type = ext === 'm4a' ? 'audio/mp4' : st.blob.type || 'audio/webm';
+        return upload('voice-notes', me.id + '/' + Date.now() + '-' + rand() + '.' + ext, st.blob, type);
+      }
+    };
+  }
+  function withAudio(o, audio) { if (audio) o.p_audio = audio; return o; }
+  // Wires a text + voice composer form to an RPC sender.
+  function wireComposer(form, send, done) {
+    var box = $('.vrec', form), vr = box ? voiceRecorder(box) : null;
+    form.onsubmit = function (ev) {
+      ev.preventDefault();
+      var body = (form.body.value || '').trim(), e = $('.err', form); e.hidden = true;
+      if (vr && vr.busy()) { e.textContent = 'Stop the recording first.'; e.hidden = false; return; }
+      if (!body && !(vr && vr.blob())) { e.textContent = 'Write a message or record a voice note first.'; e.hidden = false; return; }
+      var btn = $('button[type=submit]', form);
+      if (btn.getAttribute('data-confirm') && !confirm(btn.getAttribute('data-confirm'))) return;
+      btn.disabled = true; var label = btn.textContent; btn.textContent = vr && vr.blob() ? 'Sending voice note…' : 'Sending…';
+      (vr ? vr.upload() : Promise.resolve(null)).then(function (audio) { return send(body, audio); }).then(done)
+        .catch(function (err) { e.textContent = err.message; e.hidden = false; btn.disabled = false; btn.textContent = label; });
+    };
   }
   function hydrateVideos(root) {
     $$('video[data-path]', root).forEach(function (v) {
@@ -1536,7 +1635,8 @@
         '<p class="muted small">Goes to everyone you pick as a message from you, plus an email. Replies come back here as private chats.</p>' +
         '<div class="chips" id="aud">' + [['coaches', 'Coaches'], ['players', 'Players'], ['everyone', 'Everyone']].map(function (x) {
           return '<button type="button" class="chip' + (x[0] === aud ? ' on' : '') + '" data-aud="' + x[0] + '">' + x[1] + ' (' + counts[x[0]] + ')</button>'; }).join('') + '</div>' +
-        '<textarea class="in" name="body" rows="7" maxlength="5000" placeholder="Hey guys, hope you are getting on well this week…"></textarea>' +
+        '<textarea class="in" name="body" rows="7" maxlength="5000" placeholder="Hey guys, hope you are getting on well this week… (or just record a voice note)"></textarea>' +
+        '<div class="vrec"></div>' +
         '<p class="err" id="e" hidden></p><div class="acts" style="justify-content:flex-end"><button class="btn acc" type="submit">Send broadcast</button></div></form>' +
         '<section class="section"><h2>Conversations</h2>' + (a.threads.length ? '<div class="list">' + a.threads.map(function (th) {
           return '<a class="lrow' + (th.unread > 0 ? ' new' : '') + '" href="#/admin/chat/' + th.user_id + '"><span class="avatar">' + esc(initials(th.full_name)) + '</span>' +
@@ -1545,19 +1645,14 @@
             '<span class="side"><span class="muted small">' + when(th.last_at) + '</span>' + (th.unread > 0 ? '<span class="st open fresh"><i></i>' + th.unread + ' new</span>' : '') + '</span></a>';
         }).join('') + '</div>' : '<div class="panel muted">No replies yet. When someone replies to a broadcast, it shows up here.</div>') + '</section>' +
         (a.broadcasts.length ? '<section class="section"><h2>Recent broadcasts</h2><div class="panel">' + a.broadcasts.map(function (b) {
-          return '<div class="rv"><div class="muted small">' + when(b.created_at) + ' · to ' + b.audience + ' · ' + b.recipients + ' people</div><p style="white-space:pre-wrap">' + esc(b.body) + '</p></div>'; }).join('') + '</div></section>' : '')));
+          return '<div class="rv"><div class="muted small">' + when(b.created_at) + ' · to ' + b.audience + ' · ' + b.recipients + ' people' + (b.voice ? ' · 🎙️ voice note' : '') + '</div>' + (b.body ? '<p style="white-space:pre-wrap">' + esc(b.body) + '</p>' : '') + '</div>'; }).join('') + '</div></section>' : '')));
       $$('#aud .chip').forEach(function (b) { b.onclick = function () { aud = b.getAttribute('data-aud'); $$('#aud .chip').forEach(function (x) { x.classList.toggle('on', x === b); }); }; });
-      $('#bf').onsubmit = function (ev) {
-        ev.preventDefault();
-        var body = this.body.value.trim(), e = $('#e');
-        e.hidden = true;
-        if (!body) { e.textContent = 'Write a message first.'; e.hidden = false; return; }
-        if (!confirm('Send this to ' + counts[aud] + ' ' + (aud === 'everyone' ? 'people' : aud) + '? They will also get it by email.')) return;
-        var btn = $('button[type=submit]', this); btn.disabled = true;
-        rpc('admin_broadcast', { p_audience: aud, p_body: body })
-          .then(function (n) { toast('Sent to ' + n + ' ' + (n === 1 ? 'person' : 'people')); pageAdminMessages(); })
-          .catch(function (err) { e.textContent = err.message; e.hidden = false; btn.disabled = false; });
-      };
+      var bbtn = $('#bf button[type=submit]');
+      function setConfirm() { bbtn.setAttribute('data-confirm', 'Send this to ' + counts[aud] + ' ' + (aud === 'everyone' ? 'people' : aud) + '? They will also get an email.'); }
+      setConfirm();
+      $$('#aud .chip').forEach(function (b) { b.addEventListener('click', setConfirm); });
+      wireComposer($('#bf'), function (body, audio) { return rpc('admin_broadcast', withAudio({ p_audience: aud, p_body: body }, audio)); },
+        function (n) { toast('Sent to ' + n + ' ' + (n === 1 ? 'person' : 'people')); pageAdminMessages(); });
     }).catch(function (e) { if (t === navToken) failed('admin', e); });
   }
 
@@ -1567,7 +1662,8 @@
       var adminSide = meIsAdmin ? mine : !mine;
       return '<div class="msg' + (adminSide ? ' coach' : '') + '"><span class="avatar' + (adminSide ? ' acc' : '') + '">' + (adminSide ? 'P' : esc(otherIni)) + '</span>' +
         '<div class="bub"><div class="who"><b>' + esc(mine ? 'You' : otherName) + '</b><span class="muted small">' + when(m.created_at) + (m.broadcast ? ' · sent to everyone' : '') + '</span></div>' +
-        '<div class="body">' + esc(m.body) + '</div>' +
+        (m.body ? '<div class="body">' + esc(m.body) + '</div>' : '') +
+        (m.audio_path ? '<div class="voice"><span aria-hidden="true">🎙️</span><audio controls preload="metadata" data-voice="' + esc(m.audio_path) + '"></audio></div>' : '') +
         (m.image_url && /^https:\/\//.test(m.image_url) ? '<a class="chatimg" href="' + esc(m.image_url) + '" target="_blank" rel="noopener"><img src="' + esc(m.image_url) + '" alt="How to add Padelent to your home screen" loading="lazy"></a>' : '') +
         '</div></div>';
     }).join('');
@@ -1586,16 +1682,11 @@
         '<div><h1 style="font-size:clamp(26px,4vw,36px)">' + esc(th.full_name || th.email) + '</h1><div class="muted">' + (th.role === 'coach' ? 'Coach' : 'Player') + ' · ' + esc(th.email) + (th.role === 'coach' ? ' · <a href="#/coach/' + th.user_id + '">View profile</a>' : '') + '</div></div>' +
         '<section class="thread">' + (th.messages.length ? chatHtml(th.messages, function (m) { return m.from_admin; }, th.full_name, initials(th.full_name), true) : '<div class="panel muted">No messages yet. Say hello below.</div>') +
         '<form class="panel composer" id="cf"><h3>Message ' + esc(firstName(th.full_name) || 'them') + '</h3><textarea class="in" name="body" rows="4" maxlength="5000"></textarea>' +
-        '<p class="err" id="e" hidden></p><div class="acts" style="justify-content:flex-end"><button class="btn acc" type="submit">Send</button></div></form></section>', { narrow: true }));
+        '<div class="vrec"></div><p class="err" id="e" hidden></p><div class="acts" style="justify-content:flex-end"><button class="btn acc" type="submit">Send</button></div></form></section>', { narrow: true }));
       var last = $$('.msg').pop(); if (last) last.scrollIntoView({ block: 'center' });
-      $('#cf').onsubmit = function (ev) {
-        ev.preventDefault();
-        var body = this.body.value.trim(), e = $('#e'); e.hidden = true;
-        if (!body) { e.textContent = 'Write a message first.'; e.hidden = false; return; }
-        var btn = $('button', this); btn.disabled = true;
-        rpc('admin_send', { p_user: userId, p_body: body }).then(function () { toast('Sent'); pageAdminChat(userId); })
-          .catch(function (err) { e.textContent = err.message; e.hidden = false; btn.disabled = false; });
-      };
+      hydrateAudio();
+      wireComposer($('#cf'), function (body, audio) { return rpc('admin_send', withAudio({ p_user: userId, p_body: body }, audio)); },
+        function () { toast('Sent'); pageAdminChat(userId); });
     }).catch(function (e) { if (t === navToken) failed('admin', e); });
   }
 
@@ -1611,16 +1702,11 @@
       render(shell('', '<div><h1>Messages</h1><p class="muted" style="margin-top:6px">Your chat with ' + esc(an) + ' from the Padelent team. Lesson chats with coaches are in ' + (me.role === 'coach' ? 'Lessons' : 'My lessons') + '.</p></div>' +
         '<section class="thread">' + (ib.messages.length ? chatHtml(ib.messages, function (m) { return m.mine; }, an + ' · Padelent', 'P', false) : '<div class="panel muted">No messages yet. If you need anything, write to us below.</div>') +
         '<form class="panel composer" id="cf"><h3>Message ' + esc(an) + '</h3><textarea class="in" name="body" rows="4" maxlength="5000" placeholder="Questions, ideas or feedback"></textarea>' +
-        '<p class="err" id="e" hidden></p><div class="acts" style="justify-content:flex-end"><button class="btn acc" type="submit">Send</button></div></form></section>', { narrow: true }));
+        '<div class="vrec"></div><p class="err" id="e" hidden></p><div class="acts" style="justify-content:flex-end"><button class="btn acc" type="submit">Send</button></div></form></section>', { narrow: true }));
       var last = $$('.msg').pop(); if (last) last.scrollIntoView({ block: 'center' });
-      $('#cf').onsubmit = function (ev) {
-        ev.preventDefault();
-        var body = this.body.value.trim(), e = $('#e'); e.hidden = true;
-        if (!body) { e.textContent = 'Write a message first.'; e.hidden = false; return; }
-        var btn = $('button', this); btn.disabled = true;
-        rpc('send_inbox_message', { p_body: body }).then(function () { toast('Sent to ' + an); pageInbox(); })
-          .catch(function (err) { e.textContent = err.message; e.hidden = false; btn.disabled = false; });
-      };
+      hydrateAudio();
+      wireComposer($('#cf'), function (body, audio) { return rpc('send_inbox_message', withAudio({ p_body: body }, audio)); },
+        function () { toast('Sent to ' + an); pageInbox(); });
     }).catch(function (e) { if (t === navToken) failed('', e); });
   }
 

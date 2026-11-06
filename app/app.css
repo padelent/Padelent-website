@@ -310,3 +310,11 @@ a.lopt:hover, a.lopt:focus-visible { border-color: var(--acc); }
 
 .founder { display: inline-flex; align-items: center; gap: 4px; background: #D7F23A; color: #0A1420; font-size: 12px; font-weight: 800; letter-spacing: .02em; border-radius: 99px; padding: 2px 10px; white-space: nowrap; }
 .founder.big { font-size: 14px; padding: 5px 14px; margin: 2px auto 0; }
+
+.vrec { margin-top: 10px; }
+.vlive { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; background: var(--panel2, rgba(255,255,255,.04)); border: 1px solid var(--line, rgba(255,255,255,.1)); border-radius: 14px; padding: 10px 12px; }
+.vlive audio, .voice audio { height: 40px; max-width: 100%; flex: 1 1 220px; }
+.vdot { width: 12px; height: 12px; border-radius: 99px; background: #ff4d4f; animation: vpulse 1s infinite; }
+@keyframes vpulse { 50% { opacity: .3; } }
+.voice { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
+.voice audio { min-width: 220px; }
