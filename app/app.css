@@ -318,3 +318,5 @@ a.lopt:hover, a.lopt:focus-visible { border-color: var(--acc); }
 @keyframes vpulse { 50% { opacity: .3; } }
 .voice { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
 .voice audio { min-width: 220px; }
+
+.pushask span:first-child { font-size: 18px; line-height: 1.2; }

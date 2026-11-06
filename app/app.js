@@ -349,7 +349,7 @@
       '</div></header>' +
       '<main class="page' + (opts.narrow ? ' narrow' : '') + '" id="main">' + inner + '</main>' + tabs;
   }
-  function render(html) { $app.innerHTML = html; updateBadges(); window.scrollTo(0, 0); }
+  function render(html) { $app.innerHTML = html; updateBadges(); wirePushPrompt(); window.scrollTo(0, 0); }
   function loading(active) { render(shell(active, '<div class="boot" style="min-height:40vh"><span class="spinner"></span></div>')); }
   function failed(active, e) {
     render(shell(active, '<div class="empty"><h2>Something went wrong</h2><p class="muted">' + esc(e && e.message) +
@@ -581,7 +581,7 @@
     var next = qs('next') || store.get('padelent.next') || '#/';
     store.del('padelent.next');
     if (next.indexOf('#/') !== 0) next = '#/';
-    return loadMe().then(function () { refreshNewCount(); refreshInbox(); go(next); });
+    return loadMe().then(function () { refreshNewCount(); refreshInbox(); syncPush(); go(next); });
   }
 
   function pageLogin() {
@@ -722,7 +722,7 @@
       if (!onlyList) {
         if (me && me.role === 'player') {
           var hasGame = p && (p.level != null || p.side || (p.working_on || []).length);
-          hero = '<div class="hero"><div class="panel welcome">' + I.court +
+          hero = pushPrompt() + '<div class="hero"><div class="panel welcome">' + I.court +
             '<div style="position:relative"><div class="slogan">Padel plus talent</div>' +
             '<h1 style="margin-top:8px">Welcome back, ' + esc(firstName(me.full_name) || 'there') + '</h1>' +
             '<p style="margin-top:8px;color:#D5DEE6;max-width:520px">Pick a coach, upload a clip of your game and get a personal video lesson back.</p></div>' +
@@ -1071,7 +1071,7 @@
       var tab = store.get('padelent.feedtab') || 'all';
       var c = me.coach || {};
       render(shell('lessons',
-        (!c.approved ? approvalNotice() : '') + payoutNotice() +
+        (!c.approved ? approvalNotice() : '') + payoutNotice() + pushPrompt() +
         '<div><h1>Lessons</h1><p class="muted" style="margin-top:6px">Newest first. Tap a player to open your lessons with them.</p></div>' +
         '<div class="stats"><div class="stat"><div class="muted small">New lessons</div><div class="v">' + n['new'] + '</div></div>' +
         '<div class="stat"><div class="muted small">Awaiting your reply</div><div class="v">' + n.awaiting + '</div></div>' +
@@ -1099,6 +1099,128 @@
       });
       draw();
     }).catch(function (e) { if (t === navToken) failed('lessons', e); });
+  }
+
+  /* ---------- Phone notifications (Web Push) ---------- */
+  function isIOS() { return /iP(hone|ad|od)/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1); }
+  function isStandalone() { return (window.matchMedia && matchMedia('(display-mode: standalone)').matches) || navigator.standalone === true; }
+  function pushSupported() { return 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window; }
+  // 'on' | 'off' | 'blocked' | 'needs-install' | 'unsupported'
+  function pushState() {
+    if (isIOS() && !isStandalone()) return 'needs-install';
+    if (!pushSupported()) return 'unsupported';
+    if (Notification.permission === 'denied') return 'blocked';
+    if (Notification.permission === 'granted' && store.get('padelent.push') === '1') return 'on';
+    return 'off';
+  }
+  function swReg() { return navigator.serviceWorker.register('/app/sw.js', { scope: '/app/' }).then(function () { return navigator.serviceWorker.ready; }); }
+  function keyBytes(k) {
+    var s = atob(k.replace(/-/g, '+').replace(/_/g, '/') + '==='.slice((k.length + 3) % 4)), a = new Uint8Array(s.length);
+    for (var i = 0; i < s.length; i++) a[i] = s.charCodeAt(i); return a;
+  }
+  function pushKey(tries) {
+    return rpc('push_public_key').then(function (k) {
+      if (k) return k;
+      if ((tries || 0) >= 4) throw new Error('Notifications are not set up yet. Please try again in a minute.');
+      return new Promise(function (r) { setTimeout(r, 2500); }).then(function () { return pushKey((tries || 0) + 1); });
+    });
+  }
+  function saveSub(sub) {
+    var j = sub.toJSON();
+    return rpc('save_push_subscription', { p_endpoint: j.endpoint, p_p256dh: j.keys.p256dh, p_auth: j.keys.auth });
+  }
+  function turnOnPush() {
+    return Notification.requestPermission().then(function (perm) {
+      if (perm !== 'granted') { throw new Error(perm === 'denied' ? 'Notifications are blocked. Turn them on for Padelent in your phone settings.' : 'Notifications were not turned on.'); }
+      return Promise.all([swReg(), pushKey()]);
+    }).then(function (r) {
+      var reg = r[0], key = r[1];
+      return reg.pushManager.getSubscription().then(function (old) {
+        if (old && old.options && old.options.applicationServerKey) {
+          var a = new Uint8Array(old.options.applicationServerKey), b = keyBytes(key), same = a.length === b.length;
+          for (var i = 0; same && i < a.length; i++) if (a[i] !== b[i]) same = false;
+          if (same) return old;
+          return old.unsubscribe().then(function () { return null; });
+        }
+        return old;
+      }).then(function (sub) { return sub || reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: keyBytes(key) }); });
+    }).then(function (sub) { return saveSub(sub); }).then(function () { store.set('padelent.push', '1'); });
+  }
+  function turnOffPush() {
+    store.set('padelent.push', '0');
+    if (!pushSupported()) return Promise.resolve();
+    return navigator.serviceWorker.getRegistration('/app/').then(function (reg) {
+      return reg && reg.pushManager.getSubscription();
+    }).then(function (sub) {
+      if (!sub) return;
+      var ep = sub.endpoint;
+      return sub.unsubscribe().catch(function () {}).then(function () { return rpc('remove_push_subscription', { p_endpoint: ep }).catch(function () {}); });
+    }).catch(function () {});
+  }
+  // Keeps this phone's notification address up to date after login.
+  function syncPush() {
+    if (!me || pushState() !== 'on') return;
+    swReg().then(function (reg) { return reg.pushManager.getSubscription(); })
+      .then(function (sub) { if (sub) return saveSub(sub); store.set('padelent.push', '0'); })
+      .catch(function () {});
+  }
+  function pushWhat() {
+    if (me && me.is_admin) return 'new replies to your messages';
+    return me && me.role === 'coach' ? 'new lessons and messages from players' : 'when your coach replies';
+  }
+  // Small card asking to turn notifications on. Shown on Home / Lessons until turned on or dismissed.
+  function pushPrompt() {
+    if (!me || store.get('padelent.pushask') === 'no') return '';
+    var st = pushState();
+    if (st === 'on' || st === 'unsupported' || st === 'blocked') return '';
+    if (st === 'needs-install') {
+      return '<div class="notice accb pushask"><span>🔔</span><span><b>Get notified ' + (me.role === 'coach' ? 'about new lessons' : 'when your coach replies') + '.</b> On iPhone, add Padelent to your home screen first, then open it from there and turn notifications on. <a href="/app/install-guide.jpg" target="_blank">How to add it</a> · <a href="#" data-push="later">Not now</a></span></div>';
+    }
+    return '<div class="notice accb pushask"><span>🔔</span><span><b>Turn on notifications</b> to hear about ' + pushWhat() + ' straight away. <a href="#" data-push="on">Turn on</a> · <a href="#" data-push="later">Not now</a></span></div>';
+  }
+  function wirePushPrompt() {
+    $$('[data-push]').forEach(function (a) {
+      a.onclick = function (e) {
+        e.preventDefault();
+        var box = a.closest('.pushask');
+        if (a.getAttribute('data-push') === 'later') { store.set('padelent.pushask', 'no'); if (box) box.remove(); return; }
+        a.textContent = 'Turning on…';
+        turnOnPush().then(function () { toast('Notifications are on'); if (box) box.remove(); })
+          .catch(function (err) { toast(err.message, true); a.textContent = 'Turn on'; });
+      };
+    });
+  }
+  function pushPanel() {
+    var st = pushState();
+    var line = {
+      on: 'On. You will get a notification for ' + pushWhat() + '.',
+      off: 'Get a notification on this phone for ' + pushWhat() + '.',
+      blocked: 'Blocked on this phone. Turn notifications on for Padelent in your phone settings, then come back here.',
+      'needs-install': 'On iPhone, add Padelent to your home screen first, then open it from there to turn notifications on.',
+      unsupported: 'This browser does not support notifications. Emails will still reach you.'
+    }[st];
+    return '<div class="panel" id="pushpanel" style="display:flex;flex-direction:column;gap:10px"><h3>Notifications</h3><p class="muted" style="margin:0">' + esc(line) + '</p>' +
+      '<div class="acts">' + (st === 'off' ? '<button class="btn acc sm" type="button" id="pushon">Turn on notifications</button>' : '') +
+      (st === 'on' ? '<button class="btn sm" type="button" id="pushtest">Send me a test</button><button class="btn sm" type="button" id="pushoff">Turn off</button>' : '') +
+      (st === 'needs-install' ? '<a class="btn sm" href="/app/install-guide.jpg" target="_blank">How to add it to your home screen</a>' : '') + '</div></div>';
+  }
+  function wirePushPanel() {
+    var p = $('#pushpanel'); if (!p) return;
+    function redraw() { p.outerHTML = pushPanel(); wirePushPanel(); }
+    if ($('#pushon')) $('#pushon').onclick = function () {
+      var b = this; b.disabled = true; b.textContent = 'Turning on…';
+      turnOnPush().then(function () { toast('Notifications are on'); redraw(); })
+        .catch(function (err) { toast(err.message, true); redraw(); });
+    };
+    if ($('#pushoff')) $('#pushoff').onclick = function () { turnOffPush().then(function () { toast('Notifications are off'); redraw(); }); };
+    if ($('#pushtest')) $('#pushtest').onclick = function () {
+      var b = this; b.disabled = true;
+      rpc('push_test').then(function (ok) {
+        if (ok) toast('Test sent. It should arrive in a few seconds.');
+        else { store.set('padelent.push', '0'); toast('This phone is not set up yet. Tap Turn on again.', true); redraw(); }
+        b.disabled = false;
+      }).catch(function (err) { toast(err.message, true); b.disabled = false; });
+    };
   }
 
   function paymentsLive() { return !!(me && me.payments_live); }
@@ -1381,16 +1503,21 @@
   function segVal(name) { var b = $('[data-seg="' + name + '"] .chip.on'); return b ? b.getAttribute('data-v') : ''; }
   function multiVal(name) { return $$('[data-multi="' + name + '"] .chip.on').map(function (b) { return b.textContent; }); }
   function logoutBtn() {
-    return '<div class="panel" style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap"><div><b>' + esc(me.full_name) + '</b><div class="muted small">' + esc((session && session.user && session.user.email) || '') + '</div></div>' +
+    return pushPanel() + '<div class="panel" style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap"><div><b>' + esc(me.full_name) + '</b><div class="muted small">' + esc((session && session.user && session.user.email) || '') + '</div></div>' +
       '<div style="display:flex;gap:10px;flex-wrap:wrap"><a class="btn sm" href="mailto:' + esc(C.contactEmail) + '">Help</a><button class="btn sm" id="logout">Log out</button></div></div>' +
       '<p class="small muted" style="text-align:center"><a href="/terms.html" target="_blank">Terms</a> · <a href="/privacy.html" target="_blank">Privacy</a></p>';
   }
   function wireLogout() {
+    wirePushPanel();
     var b = $('#logout'); if (!b) return;
     b.onclick = function () {
-      var tok = session && session.access_token;
-      if (tok) raw('POST', '/auth/v1/logout', {}, true).catch(function () {});
-      saveSession(null); me = null; state.newCount = 0; go('#/login');
+      b.disabled = true;
+      // This phone should stop getting this account's notifications.
+      turnOffPush().then(function () {
+        var tok = session && session.access_token;
+        if (tok) raw('POST', '/auth/v1/logout', {}, true).catch(function () {});
+        saveSession(null); me = null; state.newCount = 0; go('#/login');
+      });
     };
   }
 
@@ -1765,6 +1892,7 @@
       }
       window.addEventListener('hashchange', route);
       route();
+      syncPush();
       refreshNewCount();
       refreshInbox();
     });
