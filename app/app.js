@@ -1869,6 +1869,19 @@
     go('#/');
   }
 
+  // iPhone: hide the bottom bar while typing, and put it back in place when the keyboard closes.
+  (function () {
+    function typing(el) { return el && (el.tagName === 'TEXTAREA' || (el.tagName === 'INPUT' && !/^(checkbox|radio|file|button|submit|range)$/i.test(el.type)) || el.isContentEditable); }
+    document.addEventListener('focusin', function (e) { if (typing(e.target)) document.body.classList.add('kb'); });
+    document.addEventListener('focusout', function () {
+      setTimeout(function () {
+        if (typing(document.activeElement)) return;
+        document.body.classList.remove('kb');
+        window.scrollTo(window.scrollX, window.scrollY + 1); window.scrollTo(window.scrollX, window.scrollY - 1);
+      }, 80);
+    });
+  })();
+
   function boot() {
     if (!SB || !KEY) { $app.innerHTML = '<div class="empty"><h2>App not configured</h2></div>'; return; }
     var h = location.hash;

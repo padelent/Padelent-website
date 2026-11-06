@@ -320,3 +320,5 @@ a.lopt:hover, a.lopt:focus-visible { border-color: var(--acc); }
 .voice audio { min-width: 220px; }
 
 .pushask span:first-child { font-size: 18px; line-height: 1.2; }
+
+@media (max-width: 760px) { body.kb .tabbar { display: none; } }
