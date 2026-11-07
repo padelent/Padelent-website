@@ -380,6 +380,11 @@
     if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(url).then(done, function () { window.prompt('Copy your profile link:', url); });
     else window.prompt('Copy your profile link:', url);
   }
+  function copyLink(url, what) {
+    var done = function () { toast((what || 'Link') + ' copied'); };
+    if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(url).then(done, function () { window.prompt('Copy this link:', url); });
+    else window.prompt('Copy this link:', url);
+  }
   function priceLabel(c) {
     if (c.offers_single) return money(c.price_pence) + '<span class="muted"> / lesson</span>';
     if (c.offers_free) return 'Free trial';
@@ -1759,6 +1764,7 @@
           (c.bio ? '<div class="small muted" style="margin-top:4px;max-height:4.5em;overflow:hidden">' + esc(c.bio) + '</div>' : '<div class="small" style="color:var(--amber)">No bio yet</div>') + '</div>' +
           '<div style="display:flex;flex-direction:column;gap:8px"><button class="btn sm ' + (c.approved ? '' : 'acc') + '" data-approve="' + c.id + '" data-to="' + (!c.approved) + '">' + (c.approved ? 'Hide' : 'Approve') + '</button>' +
           '<a class="btn sm" href="#/admin/chat/' + c.id + '">Message</a>' +
+          (c.approved ? '<button class="btn sm" type="button" data-copy="' + c.id + '" data-name="' + esc(c.full_name || 'Coach') + '">Copy link</button>' : '') +
           (!c.approved ? '<button class="btn sm" data-role-to="player" data-user="' + c.id + '" data-name="' + esc(c.full_name || c.email) + '">Make player</button>' : '') + '</div></div>';
       }
       function playerRow(p) {
@@ -1777,6 +1783,9 @@
         '<section class="section"><h2>Waiting for approval (' + pending.length + ')</h2><div class="panel">' + (pending.length ? pending.map(coachRow).join('') : '<p class="muted">Nobody waiting.</p>') + '</div></section>' +
         '<section class="section"><h2>Live coaches (' + live.length + ')</h2><div class="panel">' + (live.length ? live.map(coachRow).join('') : '<p class="muted">No live coaches yet.</p>') + '</div></section>' +
         '<section class="section"><h2>Players (' + players.length + ')</h2><p class="muted small" style="margin:-6px 0 4px">A coach who signed up as a player by mistake? Tap Make coach, then ask them to log out and back in.</p><div class="panel">' + (players.length ? players.map(playerRow).join('') : '<p class="muted">No players yet.</p>') + '</div></section>'));
+      $$('[data-copy]').forEach(function (b) {
+        b.onclick = function () { copyLink(profileUrl(b.getAttribute('data-copy')), b.getAttribute('data-name') + '’s profile link'); };
+      });
       $$('[data-role-to]').forEach(function (b) {
         b.onclick = function () {
           var to = b.getAttribute('data-role-to'), name = b.getAttribute('data-name');
