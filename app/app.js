@@ -848,7 +848,9 @@
       var tf = optTag('free', freeOk), ts = optTag('single', !paidOff);
       if (c.offers_free) opts.push(tf[0] + '<div><b>Free trial lesson' + (!freeOk && me && me.role === 'player' ? ' <i class="soon">Used</i>' : '') + '</b><span>One per player. Send a clip and ' + esc(fn) + ' will show you how they coach.</span></div><em>Free</em>' + tf[1]);
       if (c.offers_single) opts.push(ts[0] + '<div><b>Single lesson' + (paidOff ? ' <i class="soon">Opening soon</i>' : '') + '</b><span>Up to 3 clips and a personal video reply with drills.</span></div><em>' + money(c.price_pence) + '</em>' + ts[1]);
-      if (c.offers_monthly && c.monthly_price_pence) opts.push('<div class="lopt"><div><b>Monthly plan <i class="soon">Coming soon</i></b><span>Up to ' + c.monthly_videos_per_week + ' lesson' + (c.monthly_videos_per_week == 1 ? '' : 's') + ' a week with ' + esc(fn) + '.</span></div><em>' + money(c.monthly_price_pence) + '<small>/month</small></em></div>');
+      var mOpen = monthlyOpen(c, bo), tm = optTag('monthly', mOpen);
+      if (c.offers_monthly && c.monthly_price_pence) opts.push(tm[0] + '<div><b>Monthly plan' + (bo.plan ? ' <i class="soon on">Your plan</i>' : !mOpen ? ' <i class="soon">Opening soon</i>' : '') + '</b><span>' +
+        (bo.plan ? esc(planLine(bo.plan)) : 'Up to ' + plural(c.monthly_videos_per_week, 'lesson') + ' a week with ' + esc(fn) + '. Cancel any time.') + '</span></div><em>' + money(c.monthly_price_pence) + '<small>/month</small></em>' + tm[1]);
       var lessonsSec = opts.length ? '<section class="cpsec"><div class="lab">Lessons</div><div class="lopts">' + opts.join('') + '</div></section>' : '';
       var specs = (c.specialities || []).length ? '<section class="cpsec"><div class="lab">Specialities</div><ul class="ticks">' +
         c.specialities.map(function (x) { return '<li>' + tickList + esc(x) + '</li>'; }).join('') + '</ul></section>' : '';
@@ -869,7 +871,7 @@
         : '<p class="muted">No reviews yet. Be the first to book a lesson with ' + esc(fn) + '.</p>') + '</section>';
 
       var singleOk = c.offers_single && !paidOff;
-      var bookable = singleOk || (c.offers_free && freeOk);
+      var bookable = singleOk || (c.offers_free && freeOk) || monthlyOpen(c, bo);
       var bar = canBook && bookable
         ? '<div class="cpbar"><div class="price">' + (c.offers_free && freeOk ? '<b>Free trial</b><span>' + (singleOk ? 'then ' + money(c.price_pence) + ' per lesson' : 'one per player') + '</span>' : '<b>' + money(c.price_pence) + '</b><span>per lesson</span>') + '</div><a class="btn acc big" href="' + bookHref + '">' + (c.offers_free && freeOk ? 'Try a free lesson' : 'Book a lesson') + '</a></div>'
         : (isMe ? '<div class="cpbar"><div class="price"><b>Your profile</b><span>' + (preview ? 'Only you can see it until approved' : 'This is what players see') + '</span></div><button class="btn" id="share">Copy link</button><a class="btn acc" href="#/profile">Edit</a></div>' : '');
@@ -890,6 +892,18 @@
 
   /* ================================================================ booking */
 
+  function longDate(ts) { var d = new Date(ts); return ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][d.getDay()] + ' ' + d.getDate() + ' ' + MONTHS[d.getMonth()]; }
+  function plural(n, w) { return n + ' ' + w + (n == 1 ? '' : 's'); }
+  // Can a player start or use a monthly plan with this coach?
+  function monthlyOpen(c, bo) { return !!(c.offers_monthly && c.monthly_price_pence && bo.payments && bo.paid_ready); }
+  function planLine(pl) {
+    if (!pl) return '';
+    if (pl.status === 'past_due') return 'Your last monthly payment did not go through. Stripe will try your card again.';
+    var left = Math.max(0, pl.videos_per_week - pl.used);
+    return plural(left, 'lesson') + ' left this week' + (left === 0 && pl.next_open ? ' · next one opens ' + longDate(pl.next_open) : '') +
+      (pl.renews_at ? ' · ' + (pl.cancel_at_period_end ? 'ends ' : 'renews ') + longDate(pl.renews_at) : '');
+  }
+
   function bookingOptions(id) {
     return rpc('booking_options', { p_coach: id }).then(function (o) { return o || {}; }).catch(function () { return {}; });
   }
@@ -903,11 +917,11 @@
     function check() {
       rpc('confirm_lesson_payment', { p_lesson: lessonId }).then(function (r) {
         if (t !== navToken) return;
-        if (r.status === 'paid') { toast('Paid. Your lesson is with ' + firstName(r.coach_name) + '.'); return go('#/space/' + r.coach_id); }
+        if (r.status === 'paid') { toast(r.kind === 'monthly' ? 'Your monthly plan has started. Your lesson is with ' + firstName(r.coach_name) + '.' : 'Paid. Your lesson is with ' + firstName(r.coach_name) + '.'); return go('#/space/' + r.coach_id); }
         if (r.status === 'missing') { render(shell('lessons', '<div class="empty"><h2>This booking has gone</h2><p class="muted">It was cancelled or not paid for.</p><a class="btn acc" href="#/coaches">See coaches</a></div>', { narrow: true })); return; }
         if (!cancelled && ++tries < 4) return setTimeout(check, 2000);
         var fn = firstName(r.coach_name) || 'your coach';
-        render(shell('lessons', '<div class="empty"><h2>Your payment is not finished</h2><p class="muted">Your lesson with ' + esc(fn) + ' is saved with your videos. It goes to ' + esc(fn) + ' once you pay ' + money(r.price_pence) + '.</p>' +
+        render(shell('lessons', '<div class="empty"><h2>Your payment is not finished</h2><p class="muted">Your lesson with ' + esc(fn) + ' is saved with your videos. It goes to ' + esc(fn) + ' once you ' + (r.kind === 'monthly' ? 'start your monthly plan' : 'pay ' + money(r.price_pence)) + '.</p>' +
           '<div class="acts" style="justify-content:center;flex-wrap:wrap"><button class="btn acc big" id="pay">Pay now</button><button class="btn" id="cancel">Cancel booking</button></div><p class="err" id="e" hidden></p></div>', { narrow: true }));
         $('#pay').onclick = function () {
           var b = this; b.disabled = true; b.textContent = 'Opening…';
@@ -973,16 +987,19 @@
       if (t !== navToken) return;
       var c = res[0] && res[0][0], opts = res[1], freeOk = !!opts.free_available;
       if (c && opts.payments && !opts.paid_ready) c = Object.assign({}, c, { offers_single: false });
-      if (!c || !(c.offers_single || (c.offers_free && freeOk))) { render(shell('coaches', '<div class="empty"><h2>' + (c && c.offers_free && !c.offers_single ? 'You have already had your free lesson with ' + esc(firstName(c.full_name)) : 'This coach is not taking lessons right now') + '</h2><a class="btn acc" href="#/coaches">See all coaches</a></div>')); return; }
+      var plan = opts.plan || null, mOK = c && monthlyOpen(c, opts);
+      if (!c || !(c.offers_single || (c.offers_free && freeOk) || mOK)) { render(shell('coaches', '<div class="empty"><h2>' + (c && c.offers_free && !c.offers_single ? 'You have already had your free lesson with ' + esc(firstName(c.full_name)) : 'This coach is not taking lessons right now') + '</h2><a class="btn acc" href="#/coaches">See all coaches</a></div>')); return; }
       var fn = firstName(c.full_name);
-      var kind = c.offers_free && freeOk ? 'free' : 'single';
-      var want = ((location.hash.split('?')[1] || '').match(/kind=(free|single)/) || [])[1];
+      var kind = plan && mOK ? 'monthly' : c.offers_free && freeOk ? 'free' : c.offers_single ? 'single' : 'monthly';
+      var want = ((location.hash.split('?')[1] || '').match(/kind=(free|single|monthly)/) || [])[1];
       if (want === 'single' && c.offers_single) kind = 'single';
       if (want === 'free' && c.offers_free && freeOk) kind = 'free';
+      if (want === 'monthly' && mOK) kind = 'monthly';
       var kinds = [];
       if (c.offers_free && freeOk) kinds.push(['free', 'Free trial lesson', 'Free', 'One per player. ' + fn + ' will look at your clip and show you how they coach.']);
       if (c.offers_single) kinds.push(['single', 'Single lesson', money(c.price_pence), 'A personal video reply with drills to practise.']);
-      if (c.offers_monthly && c.monthly_price_pence) kinds.push(['monthly', 'Monthly plan', money(c.monthly_price_pence) + '/month', 'Coming soon, once card payments are live.']);
+      if (mOK) kinds.push(['monthly', plan ? 'Use your monthly plan' : 'Monthly plan', plan ? 'Included' : money(c.monthly_price_pence) + '/month',
+        plan ? planLine(plan) : 'Up to ' + plural(c.monthly_videos_per_week, 'lesson') + ' a week with ' + fn + '. This is your first one. Cancel any time.']);
       var p = me.player || {};
       var gameMissing = p.level == null || !p.side;
       render(shell('coaches',
@@ -991,7 +1008,7 @@
         (gameMissing ? '<div class="notice warn">' + I.info + '<span>Add your level and court side so ' + esc(fn) + ' can coach your game. <a href="#/profile">Add your game</a></span></div>' : '') +
         '<form class="form" id="f" novalidate>' +
         (kinds.length > 1 ? '<div class="f" style="display:flex;flex-direction:column;gap:10px;font-weight:700">Choose your lesson<div class="lopts" id="kinds">' + kinds.map(function (k) {
-          return '<button type="button" class="lopt pick' + (k[0] === kind ? ' on' : '') + '" data-kind="' + k[0] + '"' + (k[0] === 'monthly' ? ' disabled' : '') + '><div><b>' + esc(k[1]) + '</b><span>' + esc(k[3]) + '</span></div><em>' + k[2] + '</em></button>'; }).join('') + '</div></div>' : '') +
+          return '<button type="button" class="lopt pick' + (k[0] === kind ? ' on' : '') + '" data-kind="' + k[0] + '"' + (k[0] === 'monthly' && plan && plan.status !== 'active' ? ' disabled' : '') + '><div><b>' + esc(k[1]) + '</b><span>' + esc(k[3]) + '</span></div><em>' + k[2] + '</em></button>'; }).join('') + '</div></div>' : '') +
         '<label class="f">What do you want help with?<input class="in" name="topic" maxlength="140" placeholder="e.g. My bandeja keeps landing short" required></label>' +
         '<div class="chips" id="quick">' + WORK_ON.slice(0, 8).map(function (w) { return '<button type="button" class="chip">' + esc(w) + '</button>'; }).join('') + '</div>' +
         '<label class="f">Message to ' + esc(fn) + ' <span class="hint">What happens in the clip, what you have tried, how it feels</span><textarea class="in" name="body" maxlength="5000" rows="5"></textarea></label>' +
@@ -1005,9 +1022,17 @@
         '<button class="btn acc big block" type="submit" id="send">Send to ' + esc(fn) + '</button></form>', { narrow: true }));
       function summary() {
         var free = kind === 'free';
+        var n = $('#sumnote');
+        if (kind === 'monthly') {
+          $('#sumname').textContent = plan ? 'Lesson on your monthly plan' : 'Monthly plan with ' + fn;
+          $('#sumprice').textContent = plan ? 'Included' : money(c.monthly_price_pence) + '/month';
+          n.className = 'small muted'; n.style.color = '';
+          n.textContent = plan ? planLine(plan) + '.'
+            : 'You start your plan by card with Stripe on the next step, and this is your first lesson. It renews each month until you cancel, which you can do any time from your lessons with ' + fn + '.';
+          return;
+        }
         $('#sumname').textContent = (free ? 'Free trial lesson' : 'Video lesson') + ' with ' + fn;
         $('#sumprice').textContent = free ? 'Free' : money(c.price_pence);
-        var n = $('#sumnote');
         if (free) { n.textContent = 'No payment needed. You can have one free lesson with each coach.'; n.style.color = ''; n.className = 'small muted'; }
         else if (opts.payments) { n.textContent = 'You pay securely by card with Stripe on the next step. If ' + fn + ' has not replied within 7 days, you get a full refund.'; n.className = 'small muted'; }
         else { n.textContent = 'Test mode: card payments are not switched on yet, so this lesson is free.'; n.className = 'small'; n.style.color = 'var(--acc)'; n.style.fontWeight = '700'; }
@@ -1031,8 +1056,8 @@
           b.textContent = 'Sending…';
           return rpc('book_lesson', { p_coach: c.id, p_topic: topic, p_body: f.body.value, p_videos: paths, p_kind: kind });
         }).then(function (lessonId) {
-          if (kind !== 'free' && opts.payments) {
-            b.textContent = 'Opening secure payment…';
+          if (kind !== 'free' && opts.payments && !(kind === 'monthly' && plan)) {
+            b.textContent = kind === 'monthly' ? 'Starting your plan…' : 'Opening secure payment…';
             return rpc('lesson_checkout', { p_lesson: lessonId }).then(function (url) {
               if (url) { location.href = url; return new Promise(function () {}); }
               go('#/paid/' + lessonId);
@@ -1088,7 +1113,7 @@
             '<span class="avatar">' + esc(initials(l.player_name)) + '</span>' +
             '<span class="main"><span style="display:flex;gap:10px;align-items:baseline;flex-wrap:wrap"><b style="font-size:17px">' + esc(l.player_name) + '</b><span class="muted small">' + esc(game) + '</span></span>' +
             '<span class="t" style="' + (l.status === 'new' ? 'font-weight:700' : '') + '">' + esc(l.topic) + '</span>' +
-            '<span class="muted small">' + (l.kind === 'free' ? '<span class="freetag">Free trial</span> ' : '') + 'Lesson ' + l.nth + ' with you · ' + l.video_count + ' video' + (l.video_count == 1 ? '' : 's') + '</span></span>' +
+            '<span class="muted small">' + (l.kind === 'free' ? '<span class="freetag">Free trial</span> ' : l.kind === 'monthly' ? '<span class="freetag">Monthly plan</span> ' : '') + 'Lesson ' + l.nth + ' with you · ' + l.video_count + ' video' + (l.video_count == 1 ? '' : 's') + '</span></span>' +
             '<span class="side"><span class="muted small">' + when(l.created_at) + '</span>' + statusPill(l.status, 'coach', l) + '</span></a>';
         }).join('') + '</div>'
           : '<div class="panel empty"><h3>' + (feed.length ? 'Nothing here' : 'No lessons yet') + '</h3><p class="muted">' +
@@ -1268,6 +1293,9 @@
     var t = ++navToken;
     loading('lessons');
     rpc('get_space', { p_other: other }).then(function (sp) {
+      if (sp && sp.role !== 'coach') return rpc('my_plan', { p_coach: other }).catch(function () { return null; }).then(function (pl) { sp.plan = pl; return sp; });
+      return sp;
+    }).then(function (sp) {
       if (t !== navToken) return;
       if (!sp) { render(shell('lessons', '<div class="empty"><h2>Not found</h2><p class="muted">You do not have any lessons here.</p><a class="btn acc" href="#/lessons">My lessons</a></div>')); return; }
       var isCoach = sp.role === 'coach';
@@ -1306,6 +1334,14 @@
       aside = '<a class="panel" href="#/coach/' + o.id + '" style="display:flex;gap:14px;align-items:center;text-decoration:none;color:#fff">' +
         '<span class="avatar" style="width:56px;height:56px;font-size:18px;background:' + grad(o.id) + '">' + (o.photo_url ? '<img src="' + esc(o.photo_url) + '" alt="">' : esc(initials(o.full_name))) + '</span>' +
         '<span><b>' + esc(o.full_name) + '</b><br><span class="muted small">' + esc(o.club || '') + '</span><br><span class="link small" style="min-height:0">View profile</span></span></a>';
+      if (sp.plan) {
+        var pl = sp.plan;
+        aside += '<div class="panel plan" id="plan"><div style="display:flex;justify-content:space-between;align-items:center;gap:8px"><h3>Your monthly plan</h3><b>' + money(pl.price_pence) + '<span class="muted small">/month</span></b></div>' +
+          '<p class="small" style="margin:6px 0 0;color:#D5DEE6">Up to ' + plural(pl.videos_per_week, 'lesson') + ' a week.</p>' +
+          '<p class="small muted" style="margin:4px 0 0">' + esc(planLine(pl)) + '</p>' +
+          '<div class="acts" style="margin-top:10px">' + (pl.status === 'active' && pl.used < pl.videos_per_week ? '<a class="btn acc sm" href="#/book/' + o.id + '?kind=monthly">Send a lesson</a>' : '') +
+          (pl.cancel_at_period_end ? '<button class="btn sm" type="button" data-plan="keep">Keep my plan</button>' : '<button class="btn sm" type="button" data-plan="cancel">Cancel plan</button>') + '</div></div>';
+      }
     }
     if (lessons.length > 1) {
       aside += '<div style="display:flex;flex-direction:column;gap:8px"><h3>All lessons with ' + esc(fn) + '</h3>' + lessons.slice().reverse().map(function (l) {
@@ -1318,7 +1354,7 @@
 
     var thread = lessons.map(function (l, i) {
       var cur = l === last;
-      var head = '<div class="divider' + (cur ? ' cur' : '') + '" id="l-' + l.id + '">' + (l.kind === 'free' ? 'Free trial' : 'Lesson ' + (i + 1)) + ' · ' + esc(l.topic) + ' · ' + shortDate(l.created_at) + '</div>';
+      var head = '<div class="divider' + (cur ? ' cur' : '') + '" id="l-' + l.id + '">' + (l.kind === 'free' ? 'Free trial' : 'Lesson ' + (i + 1) + (l.kind === 'monthly' ? ' (monthly plan)' : '')) + ' · ' + esc(l.topic) + ' · ' + shortDate(l.created_at) + '</div>';
       var shownFollow = false;
       var msgs = (l.messages || []).map(function (m) {
         var sep = '';
@@ -1392,6 +1428,17 @@
       '<div class="space"><aside>' + aside + '</aside><section class="thread">' + thread + composer + '</section></div>'));
 
     hydrateVideos($('#main'));
+    $$('[data-plan]').forEach(function (b) {
+      b.onclick = function () {
+        var cancel = b.getAttribute('data-plan') === 'cancel', pl = sp.plan;
+        if (cancel && !confirm('Cancel your monthly plan with ' + fn + '? You keep it until ' + (pl.renews_at ? longDate(pl.renews_at) : 'the end of this month') + ', and you will not be charged again.')) return;
+        b.disabled = true;
+        rpc('set_plan_cancel', { p_sub: pl.id, p_cancel: cancel }).then(function (np) {
+          sp.plan = np; toast(cancel ? 'Plan cancelled. It ends ' + (np && np.renews_at ? longDate(np.renews_at) : 'at the end of the month') + '.' : 'Your plan will keep going.');
+          drawSpace(sp, other);
+        }).catch(function (err) { toast(err.message, true); b.disabled = false; });
+      };
+    });
     $$('[data-jump]').forEach(function (a) { a.onclick = function (ev) { ev.preventDefault(); var el = document.getElementById('l-' + a.getAttribute('data-jump')); if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' }); }; });
     if (lessons.length > 1 && last) { var el = document.getElementById('l-' + last.id); if (el) setTimeout(function () { el.scrollIntoView({ block: 'start' }); window.scrollBy(0, -90); }, 50); }
     if (window.matchMedia('(max-width: 900px)').matches) { var d = $('details.game'); if (d) d.open = false; }
@@ -1593,7 +1640,7 @@
         '<div class="lset"><label class="tg"><input type="checkbox" name="offers_free"' + (c.offers_free ? ' checked' : '') + '><span></span><div><b>Free trial lesson</b><small>One free lesson per player. A great way to win new players.</small></div></label></div>' +
         '<div class="lset"><label class="tg"><input type="checkbox" name="offers_single"' + (c.offers_single !== false ? ' checked' : '') + '><span></span><div><b>Single lesson</b><small>Players pay per lesson.</small></div></label>' +
           '<div class="lsub"><span>£</span><input class="in" name="price" type="number" inputmode="decimal" min="5" max="1000" step="1" value="' + (c.price_pence ? c.price_pence / 100 : 30) + '"><span class="muted small" id="youget"></span></div></div>' +
-        '<div class="lset"><label class="tg"><input type="checkbox" name="offers_monthly"' + (c.offers_monthly ? ' checked' : '') + '><span></span><div><b>Monthly plan <i class="soon">Coming soon</i></b><small>A monthly price for regular players. Players can book it once card payments go live.</small></div></label>' +
+        '<div class="lset"><label class="tg"><input type="checkbox" name="offers_monthly"' + (c.offers_monthly ? ' checked' : '') + '><span></span><div><b>Monthly plan</b><small>Regular players pay you monthly and send up to a set number of lessons a week. They can cancel any time.</small></div></label>' +
           '<div class="lsub"><span>£</span><input class="in" name="monthly_price" type="number" inputmode="decimal" min="5" max="1000" step="1" value="' + (c.monthly_price_pence ? c.monthly_price_pence / 100 : '') + '" placeholder="e.g. 99"><span class="muted small">a month, up to</span>' +
           '<select class="in" name="monthly_vpw" style="width:auto">' + [1, 2, 3, 4, 5, 7].map(function (n) { return '<option value="' + n + '"' + (n === (c.monthly_videos_per_week || 1) ? ' selected' : '') + '>' + n + '</option>'; }).join('') + '</select><span class="muted small">lessons a week</span></div></div>' +
       '</div>' +
@@ -1665,12 +1712,22 @@
     if (me.role !== 'coach') return go('#/');
     var t = ++navToken;
     loading('earnings');
-    rpc('coach_feed').then(function (feed) {
+    Promise.all([rpc('coach_feed'), rpc('coach_plans').catch(function () { return null; })]).then(function (res) {
       if (t !== navToken) return;
+      var feed = res[0], plans = res[1] || { members: [], payments: [] };
       var done = (feed || []).filter(earns);
-      var total = done.reduce(function (s, l) { return s + l.price_pence - l.platform_fee_pence; }, 0);
       var now = new Date(), m0 = new Date(now.getFullYear(), now.getMonth(), 1);
-      var month = done.filter(function (l) { return new Date(l.created_at) >= m0; }).reduce(function (s, l) { return s + l.price_pence - l.platform_fee_pence; }, 0);
+      var planPay = plans.payments || [], members = plans.members || [];
+      var total = done.reduce(function (s, l) { return s + l.price_pence - l.platform_fee_pence; }, 0) + planPay.reduce(function (s, x) { return s + x.share_pence; }, 0);
+      var month = done.filter(function (l) { return new Date(l.created_at) >= m0; }).reduce(function (s, l) { return s + l.price_pence - l.platform_fee_pence; }, 0) +
+        planPay.filter(function (x) { return new Date(x.created_at) >= m0; }).reduce(function (s, x) { return s + x.share_pence; }, 0);
+      var planSec = (members.length || planPay.length) ? '<section class="section"><h2>Monthly plans</h2>' +
+        '<div class="panel" style="overflow-x:auto"><p class="muted small" style="margin:0 0 10px">' + plural(members.length, 'player') + ' on a monthly plan with you. You get ' + (100 - (C.platformFeePercent || 20)) + '% of each monthly payment.</p>' +
+        (members.length ? '<table class="table"><thead><tr><th>Player</th><th>Plan</th><th>Next payment</th></tr></thead><tbody>' + members.map(function (m) {
+          return '<tr><td>' + esc(m.player_name) + '</td><td>' + money(m.price_pence) + '/month · ' + m.videos_per_week + ' a week</td><td>' + (m.status === 'past_due' ? '<span style="color:var(--amber)">Payment failed</span>' : m.cancel_at_period_end ? 'Ends ' + (m.renews_at ? shortDate(m.renews_at) : '') : m.renews_at ? shortDate(m.renews_at) : '') + '</td></tr>'; }).join('') + '</tbody></table>' : '') +
+        (planPay.length ? '<table class="table" style="margin-top:12px"><thead><tr><th>Date</th><th>Player</th><th>Payment</th><th>You earn</th></tr></thead><tbody>' + planPay.map(function (x) {
+          return '<tr><td>' + shortDate(x.created_at) + '</td><td>' + esc(x.player_name) + '</td><td>' + money(x.amount_pence) + '</td><td><b>' + money(x.share_pence) + '</b>' + (x.paid_out ? '' : ' <span class="muted small">(sending)</span>') + '</td></tr>'; }).join('') + '</tbody></table>' : '') +
+        '</div></section>' : '';
       render(shell('earnings', '<div><h1>Earnings</h1><p class="muted" style="margin-top:6px">What you earn from finished lessons, after Padelent’s ' + (C.platformFeePercent || 20) + '% share.</p></div>' +
         (!paymentsLive() ? '<div class="notice warn">' + I.info + '<span>Card payments are not switched on yet, so lessons are free while we test. Payouts to your bank start when payments go live.</span></div>'
           : (me.coach && me.coach.payouts_ready ? '<div class="notice accb">' + I.lock + '<span>You are paid your share as soon as you reply to a lesson. Stripe sends it to your bank. <a href="#/payouts">Payouts and bank details</a></span></div>' : payoutNotice())) +
@@ -1678,8 +1735,8 @@
         '<div class="stat"><div class="muted small">All time</div><div class="v">' + money(total) + '</div></div>' +
         '<div class="stat"><div class="muted small">Lessons done</div><div class="v">' + done.length + '</div></div></div>' +
         (done.length ? '<div class="panel" style="overflow-x:auto"><table class="table"><thead><tr><th>Date</th><th>Player</th><th>Lesson</th><th>Price</th><th>You earn</th></tr></thead><tbody>' +
-          done.map(function (l) { return '<tr><td>' + shortDate(l.created_at) + '</td><td>' + esc(l.player_name) + '</td><td>' + esc(l.topic) + '</td><td>' + money(l.price_pence) + '</td><td><b>' + money(l.price_pence - l.platform_fee_pence) + '</b></td></tr>'; }).join('') +
-          '</tbody></table></div>' : '<div class="panel empty"><p class="muted">Finished lessons will show here.</p></div>')));
+          done.map(function (l) { var mp = l.kind === 'monthly'; return '<tr><td>' + shortDate(l.created_at) + '</td><td>' + esc(l.player_name) + '</td><td>' + esc(l.topic) + '</td><td>' + (mp ? 'Monthly plan' : money(l.price_pence)) + '</td><td><b>' + (mp ? '–' : money(l.price_pence - l.platform_fee_pence)) + '</b></td></tr>'; }).join('') +
+          '</tbody></table></div>' : '<div class="panel empty"><p class="muted">Finished lessons will show here.</p></div>') + planSec));
     }).catch(function (e) { if (t === navToken) failed('earnings', e); });
   }
 

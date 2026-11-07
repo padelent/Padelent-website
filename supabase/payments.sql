@@ -182,6 +182,13 @@ begin
     payment_intent = coalesce(p_session->'payment_intent'->>'id', p_session->>'payment_intent'),
     charge_id = p_session->'payment_intent'->>'latest_charge'
   where id = p_lesson;
+  -- First lesson of a monthly plan: the plan starts now.
+  if p_session->>'mode' = 'subscription' and l.subscription_id is not null then
+    update public.subscriptions set status = 'active', checked_at = null,
+      stripe_subscription_id = coalesce(p_session->'subscription'->>'id', p_session->>'subscription'),
+      stripe_customer_id = coalesce(p_session->'customer'->>'id', p_session->>'customer')
+    where id = l.subscription_id and status = 'pending';
+  end if;
 end $$;
 
 revoke execute on function public.mark_lesson_paid(uuid, jsonb) from public, anon, authenticated;
@@ -190,7 +197,7 @@ revoke execute on function public.mark_lesson_paid(uuid, jsonb) from public, ano
 -- Returns null if it is already paid.
 create or replace function public.lesson_checkout(p_lesson uuid) returns text
 language plpgsql security definer set search_path = public as $$
-declare l public.lessons; s jsonb; v_email text; v_coach text;
+declare l public.lessons; s jsonb; v_email text; v_coach text; c public.coaches; v_sub uuid;
 begin
   select * into l from public.lessons where id = p_lesson and player_id = auth.uid();
   if l.id is null then raise exception 'Lesson not found.'; end if;
@@ -202,6 +209,40 @@ begin
   end if;
   select email into v_email from auth.users where id = l.player_id;
   select full_name into v_coach from public.profiles where id = l.coach_id;
+
+  if l.kind = 'monthly' then
+    -- Start a monthly plan; this lesson is the first one in it.
+    select * into c from public.coaches where id = l.coach_id;
+    if not c.offers_monthly or c.monthly_price_pence is null or not c.payouts_ready then
+      raise exception 'This coach is not taking monthly plans right now.';
+    end if;
+    if exists (select 1 from public.subscriptions where player_id = l.player_id and coach_id = l.coach_id and status in ('active', 'past_due')) then
+      raise exception 'You already have a monthly plan with this coach.';
+    end if;
+    insert into public.subscriptions (player_id, coach_id, price_pence, videos_per_week)
+    values (l.player_id, l.coach_id, c.monthly_price_pence, c.monthly_videos_per_week) returning id into v_sub;
+    s := public.stripe('POST', 'checkout/sessions', jsonb_build_object(
+      'mode', 'subscription',
+      'client_reference_id', l.id::text,
+      'customer_email', v_email,
+      'line_items[0][quantity]', '1',
+      'line_items[0][price_data][currency]', 'gbp',
+      'line_items[0][price_data][unit_amount]', c.monthly_price_pence::text,
+      'line_items[0][price_data][recurring][interval]', 'month',
+      'line_items[0][price_data][product_data][name]', 'Monthly padel coaching with ' || coalesce(nullif(v_coach, ''), 'your coach'),
+      'line_items[0][price_data][product_data][description]',
+        'Up to ' || c.monthly_videos_per_week || ' video lesson' || case when c.monthly_videos_per_week = 1 then '' else 's' end || ' a week. Cancel any time.',
+      'subscription_data[metadata][padelent_subscription]', v_sub::text,
+      'subscription_data[metadata][coach_id]', l.coach_id::text,
+      'metadata[lesson_id]', l.id::text,
+      'metadata[subscription_id]', v_sub::text,
+      'success_url', public.app_base() || '#/paid/' || l.id,
+      'cancel_url', public.app_base() || '#/paid/' || l.id || '?cancelled=1'), 'padelent-sub-' || l.id || '-' || v_sub);
+    update public.subscriptions set stripe_session_id = s->>'id' where id = v_sub;
+    update public.lessons set stripe_session_id = s->>'id', subscription_id = v_sub where id = l.id;
+    return s->>'url';
+  end if;
+
   s := public.stripe('POST', 'checkout/sessions', jsonb_build_object(
     'mode', 'payment',
     'client_reference_id', l.id::text,
@@ -234,7 +275,8 @@ begin
     select * into l from public.lessons where id = p_lesson;
   end if;
   return jsonb_build_object('status', case when l.status = 'pending_payment' then 'unpaid' else 'paid' end,
-    'coach_id', l.coach_id, 'coach_name', (select full_name from public.profiles where id = l.coach_id), 'price_pence', l.price_pence);
+    'coach_id', l.coach_id, 'coach_name', (select full_name from public.profiles where id = l.coach_id), 'price_pence', l.price_pence,
+    'kind', l.kind, 'plan_price_pence', (select price_pence from public.subscriptions where id = l.subscription_id));
 end $$;
 
 -- Player: changed their mind before paying.
@@ -247,13 +289,110 @@ begin
   return v_coach;
 end $$;
 
+-- ---------- Monthly plans ---------------------------------------------
+
+-- Player: my monthly plan with this coach (null if none).
+create or replace function public.my_plan(p_coach uuid) returns jsonb
+language sql stable security definer set search_path = public as $$
+  select jsonb_build_object(
+    'id', s.id, 'status', s.status, 'price_pence', s.price_pence, 'videos_per_week', s.videos_per_week,
+    'renews_at', s.current_period_end, 'cancel_at_period_end', s.cancel_at_period_end,
+    'used', (select count(*) from public.lessons l where l.player_id = s.player_id and l.coach_id = s.coach_id
+               and l.kind = 'monthly' and l.status <> 'pending_payment' and l.created_at > now() - interval '7 days'),
+    'next_open', (select min(l.created_at) + interval '7 days' from public.lessons l where l.player_id = s.player_id and l.coach_id = s.coach_id
+               and l.kind = 'monthly' and l.status <> 'pending_payment' and l.created_at > now() - interval '7 days'))
+  from public.subscriptions s
+  where s.player_id = auth.uid() and s.coach_id = p_coach and s.status in ('active', 'past_due')
+  order by s.created_at desc limit 1
+$$;
+
+-- Internal: refresh one plan from Stripe and pay the coach their share of any new monthly payment.
+create or replace function public.sync_subscription(p_sub uuid) returns void
+language plpgsql security definer set search_path = public as $$
+declare v public.subscriptions; st jsonb; ch jsonb; c jsonb; v_status text; v_end text; v_acct text; v_share int; t jsonb;
+begin
+  select * into v from public.subscriptions where id = p_sub;
+  if v.id is null or v.stripe_subscription_id is null then return; end if;
+  st := public.stripe('GET', 'subscriptions/' || v.stripe_subscription_id);
+  v_status := case st->>'status' when 'active' then 'active' when 'trialing' then 'active'
+                when 'past_due' then 'past_due' when 'unpaid' then 'past_due' when 'incomplete' then 'past_due'
+                else 'cancelled' end;
+  v_end := coalesce(st->>'current_period_end', st#>>'{items,data,0,current_period_end}');
+  update public.subscriptions set status = v_status,
+    current_period_end = case when v_end ~ '^[0-9]+$' then to_timestamp(v_end::bigint) else current_period_end end,
+    cancel_at_period_end = coalesce((st->>'cancel_at_period_end')::boolean, false),
+    cancelled_at = case when v_status = 'cancelled' then coalesce(cancelled_at, now()) end,
+    checked_at = now()
+  where id = p_sub;
+
+  if v.stripe_customer_id is null then return; end if;
+  select stripe_account_id into v_acct from public.coaches where id = v.coach_id;
+  ch := public.stripe('GET', 'charges', jsonb_build_object('customer', v.stripe_customer_id, 'limit', '20'));
+  for c in select value from jsonb_array_elements(coalesce(ch->'data', '[]'::jsonb)) loop
+    continue when c->>'status' <> 'succeeded' or not coalesce((c->>'paid')::boolean, false);
+    continue when exists (select 1 from public.subscription_payments where charge_id = c->>'id' and (transfer_id is not null or refunded));
+    v_share := round((c->>'amount')::int * (100 - public.platform_fee_percent()) / 100.0);
+    if coalesce((c->>'amount_refunded')::int, 0) > 0 then
+      insert into public.subscription_payments (charge_id, subscription_id, coach_id, player_id, amount_pence, coach_share_pence, refunded)
+      values (c->>'id', v.id, v.coach_id, v.player_id, (c->>'amount')::int, v_share, true)
+      on conflict (charge_id) do update set refunded = true;
+      continue;
+    end if;
+    begin
+      if v_acct is null then raise exception 'Coach has no payout account.'; end if;
+      t := public.stripe('POST', 'transfers', jsonb_build_object(
+        'amount', v_share::text, 'currency', 'gbp', 'destination', v_acct,
+        'source_transaction', c->>'id', 'transfer_group', 'plan-' || v.id,
+        'description', 'Padelent monthly plan', 'metadata[subscription_id]', v.id::text), 'padelent-planpay-' || (c->>'id'));
+      insert into public.subscription_payments (charge_id, subscription_id, coach_id, player_id, amount_pence, coach_share_pence, transfer_id)
+      values (c->>'id', v.id, v.coach_id, v.player_id, (c->>'amount')::int, v_share, t->>'id')
+      on conflict (charge_id) do update set transfer_id = excluded.transfer_id, transfer_error = null;
+    exception when others then
+      insert into public.subscription_payments (charge_id, subscription_id, coach_id, player_id, amount_pence, coach_share_pence, transfer_error)
+      values (c->>'id', v.id, v.coach_id, v.player_id, (c->>'amount')::int, v_share, left(sqlerrm, 300))
+      on conflict (charge_id) do update set transfer_error = excluded.transfer_error;
+    end;
+  end loop;
+end $$;
+
+revoke execute on function public.sync_subscription(uuid) from public, anon, authenticated;
+
+-- Player: cancel at the end of the month already paid for (or undo that).
+create or replace function public.set_plan_cancel(p_sub uuid, p_cancel boolean) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare v public.subscriptions;
+begin
+  select * into v from public.subscriptions where id = p_sub and player_id = auth.uid() and status in ('active', 'past_due');
+  if v.id is null then raise exception 'Plan not found.'; end if;
+  perform public.stripe('POST', 'subscriptions/' || v.stripe_subscription_id,
+    jsonb_build_object('cancel_at_period_end', case when p_cancel then 'true' else 'false' end));
+  perform public.sync_subscription(v.id);
+  return public.my_plan(v.coach_id);
+end $$;
+
+-- Coach: monthly plan members and payments, for the Earnings page.
+create or replace function public.coach_plans() returns jsonb
+language sql stable security definer set search_path = public as $$
+  select jsonb_build_object(
+    'members', coalesce((select jsonb_agg(jsonb_build_object('player_name', p.full_name, 'status', s.status, 'price_pence', s.price_pence,
+        'videos_per_week', s.videos_per_week, 'renews_at', s.current_period_end, 'cancel_at_period_end', s.cancel_at_period_end, 'since', s.created_at)
+        order by s.created_at desc)
+      from public.subscriptions s join public.profiles p on p.id = s.player_id
+      where s.coach_id = auth.uid() and s.status in ('active', 'past_due')), '[]'::jsonb),
+    'payments', coalesce((select jsonb_agg(jsonb_build_object('player_name', p.full_name, 'created_at', sp.created_at,
+        'amount_pence', sp.amount_pence, 'share_pence', sp.coach_share_pence, 'paid_out', sp.transfer_id is not null) order by sp.created_at desc)
+      from public.subscription_payments sp left join public.profiles p on p.id = sp.player_id
+      where sp.coach_id = auth.uid() and not sp.refunded), '[]'::jsonb))
+$$;
+
 -- Anyone: what can be booked with this coach right now?
 create or replace function public.booking_options(p_coach uuid) returns jsonb
 language sql stable security definer set search_path = public as $$
   select jsonb_build_object(
     'payments', public.payments_required(),
     'paid_ready', coalesce((select payouts_ready from public.coaches where id = p_coach), false),
-    'free_available', public.free_lesson_available(p_coach))
+    'free_available', public.free_lesson_available(p_coach),
+    'plan', public.my_plan(p_coach))
 $$;
 
 -- ---------- Every 5 minutes: confirm payments, pay coaches ---------------------------------------------
@@ -306,6 +445,17 @@ begin
     end;
   end loop;
 
+  -- Monthly plans: check each one every 30 minutes; pay coaches for new monthly payments.
+  for l in select id from public.subscriptions
+           where status in ('active', 'past_due') and stripe_subscription_id is not null
+             and (checked_at is null or checked_at < now() - interval '30 minutes') loop
+    begin perform public.sync_subscription(l.id);
+    exception when others then update public.subscriptions set checked_at = now() where id = l.id;
+    end;
+  end loop;
+  delete from public.subscriptions s where s.status = 'pending' and s.created_at < now() - interval '3 days'
+    and not exists (select 1 from public.lessons x where x.subscription_id = s.id and x.status <> 'pending_payment');
+
   -- Refunds made in the Stripe dashboard before the coach replied: close the lesson.
   for l in select id, charge_id from public.lessons
            where status in ('new', 'awaiting') and paid and refunded_at is null and charge_id is not null
@@ -327,7 +477,10 @@ select cron.schedule('padelent-payments', '*/5 * * * *', 'select public.payments
 -- ---------- Who can call what ---------------------------------------------
 
 revoke execute on function public.coach_payout_status(), public.coach_payout_link(), public.coach_dashboard_link(),
-  public.lesson_checkout(uuid), public.confirm_lesson_payment(uuid), public.cancel_pending_lesson(uuid) from public, anon;
+  public.lesson_checkout(uuid), public.confirm_lesson_payment(uuid), public.cancel_pending_lesson(uuid),
+  public.set_plan_cancel(uuid, boolean), public.coach_plans() from public, anon;
 grant execute on function public.coach_payout_status(), public.coach_payout_link(), public.coach_dashboard_link(),
-  public.lesson_checkout(uuid), public.confirm_lesson_payment(uuid), public.cancel_pending_lesson(uuid) to authenticated;
+  public.lesson_checkout(uuid), public.confirm_lesson_payment(uuid), public.cancel_pending_lesson(uuid),
+  public.set_plan_cancel(uuid, boolean), public.coach_plans() to authenticated;
+grant execute on function public.my_plan(uuid) to anon, authenticated;
 grant execute on function public.booking_options(uuid) to anon, authenticated;

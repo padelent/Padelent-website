@@ -322,3 +322,6 @@ a.lopt:hover, a.lopt:focus-visible { border-color: var(--acc); }
 .pushask span:first-child { font-size: 18px; line-height: 1.2; }
 
 @media (max-width: 760px) { body.kb .tabbar { display: none; } }
+
+.soon.on { background: rgba(215,242,58,.18); color: var(--acc); }
+.panel.plan { border-color: rgba(215,242,58,.45); }

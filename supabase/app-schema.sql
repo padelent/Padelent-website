@@ -89,6 +89,41 @@ alter table public.lessons add column if not exists transfer_id text;
 alter table public.lessons add column if not exists transferred_at timestamptz;
 alter table public.lessons add column if not exists transfer_error text;
 alter table public.lessons add column if not exists refunded_at timestamptz;
+
+-- Monthly plans: a player pays a coach monthly by card and books up to N lessons a week.
+create table if not exists public.subscriptions (
+  id uuid primary key default gen_random_uuid(),
+  player_id uuid not null references public.players(id) on delete cascade,
+  coach_id uuid not null references public.coaches(id) on delete cascade,
+  status text not null default 'pending' check (status in ('pending', 'active', 'past_due', 'cancelled')),
+  price_pence int not null,
+  videos_per_week int not null,
+  stripe_session_id text,
+  stripe_subscription_id text unique,
+  stripe_customer_id text,
+  current_period_end timestamptz,
+  cancel_at_period_end boolean not null default false,
+  checked_at timestamptz,
+  cancelled_at timestamptz,
+  created_at timestamptz not null default now()
+);
+create index if not exists subscriptions_player_idx on public.subscriptions (player_id, coach_id, status);
+create index if not exists subscriptions_coach_idx on public.subscriptions (coach_id, status);
+alter table public.lessons add column if not exists subscription_id uuid references public.subscriptions(id) on delete set null;
+
+-- Each monthly payment, and the coach's share sent to them.
+create table if not exists public.subscription_payments (
+  charge_id text primary key,
+  subscription_id uuid references public.subscriptions(id) on delete set null,
+  coach_id uuid references public.coaches(id) on delete set null,
+  player_id uuid references public.players(id) on delete set null,
+  amount_pence int not null,
+  coach_share_pence int not null,
+  transfer_id text,
+  transfer_error text,
+  refunded boolean not null default false,
+  created_at timestamptz not null default now()
+);
 create index if not exists lessons_coach_idx on public.lessons (coach_id, created_at desc);
 create index if not exists lessons_player_idx on public.lessons (player_id, created_at desc);
 
@@ -125,6 +160,9 @@ alter table public.players  enable row level security;
 alter table public.lessons  enable row level security;
 alter table public.messages enable row level security;
 alter table public.reviews  enable row level security;
+alter table public.subscriptions enable row level security;
+alter table public.subscription_payments enable row level security;
+revoke all on public.subscriptions, public.subscription_payments from anon, authenticated;
 
 revoke all on public.profiles, public.coaches, public.players, public.lessons, public.messages, public.reviews from anon, authenticated;
 grant select on public.profiles, public.coaches, public.players, public.lessons, public.messages to authenticated;
@@ -297,6 +335,7 @@ create or replace function public.book_lesson(p_coach uuid, p_topic text, p_body
 returns uuid
 language plpgsql security definer set search_path = public as $$
 declare v_uid uuid := auth.uid(); c public.coaches; v_price int; v_id uuid; v text;
+        v_sub public.subscriptions; v_sub_id uuid; v_needs_pay boolean := false; v_status text; v_used int; v_first timestamptz; v_cname text;
 begin
   if not exists (select 1 from public.players where id = v_uid) then
     raise exception 'Only player accounts can book lessons.';
@@ -316,7 +355,29 @@ begin
       raise exception '% is still setting up card payments, so paid lessons are not open yet.', coalesce(nullif(split_part((select full_name from public.profiles where id = p_coach), ' ', 1), ''), 'This coach');
     end if;
   elsif p_kind = 'monthly' then
-    raise exception 'Monthly plans start when card payments go live.';
+    v_cname := coalesce(nullif(split_part((select full_name from public.profiles where id = p_coach), ' ', 1), ''), 'this coach');
+    if not c.offers_monthly or c.monthly_price_pence is null then raise exception 'This coach does not offer a monthly plan right now.'; end if;
+    select * into v_sub from public.subscriptions
+    where player_id = v_uid and coach_id = p_coach and status in ('active', 'past_due') order by created_at desc limit 1;
+    if v_sub.id is not null then
+      if v_sub.status = 'past_due' then
+        raise exception 'Your last monthly payment did not go through. Stripe will try your card again, or you can cancel the plan and start a new one.';
+      end if;
+      select count(*), min(created_at) into v_used, v_first from public.lessons
+      where player_id = v_uid and coach_id = p_coach and kind = 'monthly' and status <> 'pending_payment'
+        and created_at > now() - interval '7 days';
+      if v_used >= v_sub.videos_per_week then
+        raise exception 'You have used all % of this week''s lessons with %. Your next one opens on %.',
+          v_sub.videos_per_week, v_cname, to_char(v_first + interval '7 days', 'FMDay FMDD FMMonth');
+      end if;
+      v_sub_id := v_sub.id;
+    else
+      if not public.payments_required() or not c.payouts_ready then
+        raise exception 'Monthly plans open once % has set up card payments.', v_cname;
+      end if;
+      v_needs_pay := true;  -- the plan is started on the payment page
+    end if;
+    v_price := 0;          -- paid for by the monthly plan, not per lesson
   else
     raise exception 'Unknown lesson type.';
   end if;
@@ -327,16 +388,17 @@ begin
     if split_part(v, '/', 1) <> v_uid::text then raise exception 'Video upload not recognised.'; end if;
   end loop;
 
+  v_status := case when (public.payments_required() and v_price > 0) or v_needs_pay then 'pending_payment' else 'new' end;
+
   -- A new lesson closes the follow-up chat on the last one (paid lessons do this once payment arrives).
-  if not (public.payments_required() and v_price > 0) then
+  if v_status = 'new' then
     update public.lessons set closed_at = now(), needs_coach = false
     where player_id = v_uid and coach_id = p_coach and status = 'done' and closed_at is null;
   end if;
 
-  insert into public.lessons (player_id, coach_id, topic, status, price_pence, platform_fee_pence, kind)
-  values (v_uid, p_coach, left(trim(p_topic), 140),
-          case when public.payments_required() and v_price > 0 then 'pending_payment' else 'new' end,
-          v_price, round(v_price * public.platform_fee_percent() / 100.0), p_kind)
+  insert into public.lessons (player_id, coach_id, topic, status, price_pence, platform_fee_pence, kind, subscription_id)
+  values (v_uid, p_coach, left(trim(p_topic), 140), v_status,
+          v_price, round(v_price * public.platform_fee_percent() / 100.0), p_kind, v_sub_id)
   returning id into v_id;
 
   insert into public.messages (lesson_id, sender_id, body, videos)
@@ -528,6 +590,8 @@ begin
     'lessons', (select count(*) from public.lessons where status <> 'pending_payment'),
     'lessons_done', (select count(*) from public.lessons where status = 'done'),
     'revenue_pence', (select coalesce(sum(platform_fee_pence), 0) from public.lessons where status <> 'pending_payment')
+                   + (select coalesce(sum(amount_pence - coach_share_pence), 0) from public.subscription_payments where not refunded),
+    'members', (select count(*) from public.subscriptions where status in ('active', 'past_due'))
   );
 end $$;
 
