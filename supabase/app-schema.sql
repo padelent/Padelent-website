@@ -641,12 +641,16 @@ drop trigger if exists assign_founding_number on public.coaches;
 create trigger assign_founding_number before update of approved on public.coaches
   for each row execute function public.assign_founding_number();
 
--- Coaches approved before the badge existed get numbered by when they joined.
-with already as (
-  select id, row_number() over (order by created_at) + (select coalesce(max(founding_number), 0) from public.coaches) as n
-  from public.coaches where approved and founding_number is null
-)
-update public.coaches c set founding_number = a.n from already a where c.id = a.id and a.n <= 25;
+-- Live coaches without a badge get the next free spot (oldest first), while spots are left.
+do $$
+declare r record; v_n int;
+begin
+  for r in select id from public.coaches where approved and founding_number is null order by created_at loop
+    select min(n) into v_n from generate_series(1, 25) n where not exists (select 1 from public.coaches where founding_number = n);
+    exit when v_n is null;
+    update public.coaches set founding_number = v_n where id = r.id;
+  end loop;
+end $$;
 
 -- Functions are for logged-in users only (the coach list view above is public).
 revoke execute on function public.my_profile(), public.save_my_profile(jsonb),
