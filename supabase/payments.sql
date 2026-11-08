@@ -117,30 +117,41 @@ begin
   select * into c from public.coaches where id = v_uid;
   if c.id is null then raise exception 'Only coach accounts have payouts.'; end if;
   if not public.payments_required() then return jsonb_build_object('payments', false); end if;
-  if c.stripe_account_id is null then return jsonb_build_object('payments', true, 'has_account', false, 'ready', false); end if;
+  if c.stripe_account_id is null then return jsonb_build_object('payments', true, 'has_account', false, 'ready', false, 'country', c.payout_country); end if;
   st := public.refresh_coach_payouts(v_uid);
-  return st || jsonb_build_object('payments', true, 'has_account', true);
+  return st || jsonb_build_object('payments', true, 'has_account', true, 'country', coalesce(c.payout_country, 'GB'));
 end $$;
 
 -- Coach: a Stripe link to set up (or finish setting up) payouts.
-create or replace function public.coach_payout_link() returns text
+-- The country each coach's Stripe account is set up in (Stripe cannot change it later).
+alter table public.coaches add column if not exists payout_country text;
+
+drop function if exists public.coach_payout_link();
+create or replace function public.coach_payout_link(p_country text default null) returns text
 language plpgsql security definer set search_path = public as $$
-declare v_uid uuid := auth.uid(); c public.coaches; v_email text; a jsonb; l jsonb;
+declare v_uid uuid := auth.uid(); c public.coaches; v_email text; a jsonb; l jsonb; v_country text;
 begin
   select * into c from public.coaches where id = v_uid;
   if c.id is null then raise exception 'Only coach accounts have payouts.'; end if;
+  v_country := upper(coalesce(nullif(trim(p_country), ''), c.payout_country, 'GB'));
+  if v_country !~ '^[A-Z]{2}$' then raise exception 'Pick the country you live in.'; end if;
+  -- Picked a different country before finishing setup: start a fresh Stripe account in that country.
+  if c.stripe_account_id is not null and not c.payouts_ready and v_country <> coalesce(c.payout_country, 'GB') then
+    update public.coaches set stripe_account_id = null where id = v_uid;
+    c.stripe_account_id := null;
+  end if;
   if c.stripe_account_id is null then
     select email into v_email from auth.users where id = v_uid;
     a := public.stripe_v2('POST', 'core/accounts', jsonb_build_object(
       'contact_email', v_email,
       'display_name', coalesce(nullif((select full_name from public.profiles where id = v_uid), ''), 'Padelent coach'),
-      'identity', jsonb_build_object('country', 'GB', 'entity_type', 'individual'),
+      'identity', jsonb_build_object('country', v_country, 'entity_type', 'individual'),
       'dashboard', 'express',
       'defaults', jsonb_build_object('responsibilities', jsonb_build_object('fees_collector', 'application', 'losses_collector', 'application')),
       'configuration', jsonb_build_object('recipient', jsonb_build_object('capabilities', jsonb_build_object(
         'stripe_balance', jsonb_build_object('stripe_transfers', jsonb_build_object('requested', true))))),
-      'metadata', jsonb_build_object('padelent_coach', v_uid::text)), 'padelent-acct5-' || v_uid);
-    update public.coaches set stripe_account_id = a->>'id' where id = v_uid;
+      'metadata', jsonb_build_object('padelent_coach', v_uid::text)), 'padelent-acct6-' || v_uid || '-' || v_country);
+    update public.coaches set stripe_account_id = a->>'id', payout_country = v_country where id = v_uid;
     c.stripe_account_id := a->>'id';
   end if;
   l := public.stripe_v2('POST', 'core/account_links', jsonb_build_object(
@@ -476,10 +487,10 @@ select cron.schedule('padelent-payments', '*/5 * * * *', 'select public.payments
 
 -- ---------- Who can call what ---------------------------------------------
 
-revoke execute on function public.coach_payout_status(), public.coach_payout_link(), public.coach_dashboard_link(),
+revoke execute on function public.coach_payout_status(), public.coach_payout_link(text), public.coach_dashboard_link(),
   public.lesson_checkout(uuid), public.confirm_lesson_payment(uuid), public.cancel_pending_lesson(uuid),
   public.set_plan_cancel(uuid, boolean), public.coach_plans() from public, anon;
-grant execute on function public.coach_payout_status(), public.coach_payout_link(), public.coach_dashboard_link(),
+grant execute on function public.coach_payout_status(), public.coach_payout_link(text), public.coach_dashboard_link(),
   public.lesson_checkout(uuid), public.confirm_lesson_payment(uuid), public.cancel_pending_lesson(uuid),
   public.set_plan_cancel(uuid, boolean), public.coach_plans() to authenticated;
 grant execute on function public.my_plan(uuid) to anon, authenticated;

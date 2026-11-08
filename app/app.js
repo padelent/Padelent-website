@@ -944,6 +944,12 @@
   }
 
   /* Coach payouts (Stripe Connect Express) */
+  // Countries Stripe can pay coaches in (from a UK platform).
+  var PAYOUT_COUNTRIES = [['GB', 'United Kingdom'], ['IE', 'Ireland'], ['ES', 'Spain'], ['NL', 'Netherlands'], ['PT', 'Portugal'], ['FR', 'France'],
+    ['IT', 'Italy'], ['DE', 'Germany'], ['BE', 'Belgium'], ['SE', 'Sweden'], ['DK', 'Denmark'], ['NO', 'Norway'], ['FI', 'Finland'], ['CH', 'Switzerland'],
+    ['AT', 'Austria'], ['PL', 'Poland'], ['GR', 'Greece'], ['LU', 'Luxembourg'], ['AE', 'United Arab Emirates'], ['MY', 'Malaysia'], ['SG', 'Singapore'],
+    ['ID', 'Indonesia'], ['TH', 'Thailand'], ['AU', 'Australia'], ['NZ', 'New Zealand'], ['US', 'United States'], ['CA', 'Canada'], ['MX', 'Mexico'],
+    ['AR', 'Argentina'], ['BR', 'Brazil'], ['CL', 'Chile'], ['ZA', 'South Africa']];
   function pagePayouts() {
     if (!needPlayer()) return;
     if (me.role !== 'coach') return go('#/');
@@ -963,7 +969,11 @@
           (st.payouts_enabled === false ? '<p class="small" style="color:var(--amber);margin:0">Stripe needs a bit more information before it can pay into your bank. Open your Stripe dashboard to finish.</p>' : '') +
           '<div class="acts"><button class="btn acc" id="dash">Open Stripe dashboard</button><a class="btn" href="#/earnings">See earnings</a></div><p class="err" id="e" hidden></p></div>';
       } else {
-        body = '<div class="panel" style="display:flex;flex-direction:column;gap:14px"><h3>' + (st.has_account && st.details_submitted ? 'Stripe is checking your details' : st.has_account ? 'Finish setting up payouts' : 'Set up payouts') + '</h3>' +
+        var cc = st.country || 'GB';
+        var countryPick = st.has_account && st.details_submitted ? '' :
+          '<label class="f">Country you live in <span class="hint">Your bank account must be in this country. You cannot change it once Stripe has your details.</span>' +
+          '<select class="in" id="country">' + PAYOUT_COUNTRIES.map(function (x) { return '<option value="' + x[0] + '"' + (x[0] === cc ? ' selected' : '') + '>' + esc(x[1]) + '</option>'; }).join('') + '</select></label>';
+        body = '<div class="panel" style="display:flex;flex-direction:column;gap:14px"><h3>' + (st.has_account && st.details_submitted ? 'Stripe is checking your details' : st.has_account ? 'Finish setting up payouts' : 'Set up payouts') + '</h3>' + countryPick +
           (st.has_account && st.details_submitted ? '<p class="muted" style="margin:0">This usually takes a few minutes. If Stripe needs anything else, tap the button below.</p>'
             : '<p class="muted" style="margin:0">Padelent uses Stripe to pay coaches. Stripe keeps your bank details, so Padelent never sees them. You will need:</p>' + steps) +
           '<div class="acts"><button class="btn acc big" id="setup">' + (st.has_account ? 'Continue with Stripe' : 'Set up payouts with Stripe') + '</button>' + (st.has_account ? '<button class="btn" id="recheck">Check again</button>' : '') + '</div><p class="err" id="e" hidden></p></div>';
@@ -973,7 +983,8 @@
         var b = $(id); if (!b) return;
         b.onclick = function () {
           var label = b.textContent; b.disabled = true; b.textContent = 'Opening Stripe…';
-          rpc(fnName).then(function (url) { location.href = url; })
+          var cs = $('#country');
+          rpc(fnName, fnName === 'coach_payout_link' && cs ? { p_country: cs.value } : undefined).then(function (url) { location.href = url; })
             .catch(function (err) { $('#e').textContent = err.message; $('#e').hidden = false; b.disabled = false; b.textContent = label; });
         };
       }
