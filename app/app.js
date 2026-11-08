@@ -349,7 +349,7 @@
       '</div></header>' +
       '<main class="page' + (opts.narrow ? ' narrow' : '') + '" id="main">' + inner + '</main>' + tabs;
   }
-  function render(html) { $app.innerHTML = html; updateBadges(); wirePushPrompt(); window.scrollTo(0, 0); }
+  function render(html) { document.body.classList.remove('kb'); $app.innerHTML = html; updateBadges(); wirePushPrompt(); window.scrollTo(0, 0); }
   function loading(active) { render(shell(active, '<div class="boot" style="min-height:40vh"><span class="spinner"></span></div>')); }
   function failed(active, e) {
     render(shell(active, '<div class="empty"><h2>Something went wrong</h2><p class="muted">' + esc(e && e.message) +
@@ -1939,6 +1939,13 @@
   (function () {
     function typing(el) { return el && (el.tagName === 'TEXTAREA' || (el.tagName === 'INPUT' && !/^(checkbox|radio|file|button|submit|range)$/i.test(el.type)) || el.isContentEditable); }
     document.addEventListener('focusin', function (e) { if (typing(e.target)) document.body.classList.add('kb'); });
+    // Safety net: never leave the bar hidden when nothing is being typed (iPhone skips focusout when a page changes).
+    function check() { if (!typing(document.activeElement)) document.body.classList.remove('kb'); }
+    window.addEventListener('hashchange', check);
+    window.addEventListener('pageshow', check);
+    document.addEventListener('visibilitychange', check);
+    document.addEventListener('touchstart', function () { setTimeout(check, 300); }, { passive: true });
+    if (window.visualViewport) window.visualViewport.addEventListener('resize', function () { setTimeout(check, 100); });
     document.addEventListener('focusout', function () {
       setTimeout(function () {
         if (typing(document.activeElement)) return;
