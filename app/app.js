@@ -1140,7 +1140,7 @@
     if (isIOS() && !isStandalone()) return 'needs-install';
     if (!pushSupported()) return 'unsupported';
     if (Notification.permission === 'denied') return 'blocked';
-    if (Notification.permission === 'granted' && store.get('padelent.push') === '1') return 'on';
+    if (Notification.permission === 'granted' && store.get('padelent.push') !== '0') return 'on';
     return 'off';
   }
   function swReg() { return navigator.serviceWorker.register('/app/sw.js', { scope: '/app/' }).then(function () { return navigator.serviceWorker.ready; }); }
@@ -1187,12 +1187,25 @@
       return sub.unsubscribe().catch(function () {}).then(function () { return rpc('remove_push_subscription', { p_endpoint: ep }).catch(function () {}); });
     }).catch(function () {});
   }
-  // Keeps this phone's notification address up to date after login.
+  // After login: if this phone already allows notifications, link it to whoever is logged in.
   function syncPush() {
     if (!me || pushState() !== 'on') return;
-    swReg().then(function (reg) { return reg.pushManager.getSubscription(); })
-      .then(function (sub) { if (sub) return saveSub(sub); store.set('padelent.push', '0'); })
-      .catch(function () {});
+    Promise.all([swReg(), pushKey()]).then(function (r) {
+      var reg = r[0], key = r[1];
+      return reg.pushManager.getSubscription().then(function (sub) {
+        return sub || reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: keyBytes(key) });
+      });
+    }).then(function (sub) { return saveSub(sub); }).catch(function () {});
+  }
+  // On logout: stop this account's notifications on this phone, but keep the phone's permission,
+  // so the next person to log in here gets theirs without being asked again.
+  function detachPush() {
+    if (!pushSupported()) return Promise.resolve();
+    return navigator.serviceWorker.getRegistration('/app/').then(function (reg) {
+      return reg && reg.pushManager.getSubscription();
+    }).then(function (sub) {
+      if (sub) return rpc('remove_push_subscription', { p_endpoint: sub.endpoint }).catch(function () {});
+    }).catch(function () {});
   }
   function pushWhat() {
     if (me && me.is_admin) return 'new replies to your messages';
@@ -1247,9 +1260,8 @@
       var b = this; b.disabled = true;
       rpc('push_test').then(function (ok) {
         if (ok) toast('Test sent. It should arrive in a few seconds.');
-        else { store.set('padelent.push', '0'); toast('This phone is not set up yet. Tap Turn on again.', true); redraw(); }
-        b.disabled = false;
-      }).catch(function (err) { toast(err.message, true); b.disabled = false; });
+        else return turnOnPush().then(function () { return rpc('push_test'); }).then(function () { toast('Test sent. It should arrive in a few seconds.'); });
+      }).then(function () { b.disabled = false; }, function (err) { toast(err.message, true); b.disabled = false; redraw(); });
     };
   }
 
@@ -1565,7 +1577,7 @@
     b.onclick = function () {
       b.disabled = true;
       // This phone should stop getting this account's notifications.
-      turnOffPush().then(function () {
+      detachPush().then(function () {
         var tok = session && session.access_token;
         if (tok) raw('POST', '/auth/v1/logout', {}, true).catch(function () {});
         saveSession(null); me = null; state.newCount = 0; go('#/login');
