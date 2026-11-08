@@ -629,8 +629,10 @@ declare v_n int;
 begin
   if new.approved and not coalesce(old.approved, false) and new.founding_number is null then
     perform pg_advisory_xact_lock(hashtext('padelent_founding'));
-    select coalesce(max(founding_number), 0) into v_n from public.coaches;
-    if v_n < 25 then new.founding_number := v_n + 1; end if;
+    -- The lowest free spot from 1 to 25 (spots freed by deleted accounts are reused).
+    select min(n) into v_n from generate_series(1, 25) n
+    where not exists (select 1 from public.coaches where founding_number = n);
+    if v_n is not null then new.founding_number := v_n; end if;
   end if;
   return new;
 end $$;
