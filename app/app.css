@@ -16,8 +16,8 @@
   --tabbar: 0px;
 }
 * { box-sizing: border-box; }
-html { -webkit-text-size-adjust: 100%; overflow-x: hidden; overflow-x: clip; }
-body { overflow-x: hidden; overflow-x: clip; }
+html { -webkit-text-size-adjust: 100%; overflow-x: clip; }
+body { overflow-x: clip; }
 body { margin: 0; background: var(--navy); color: var(--text); font-family: var(--body); font-size: 16px; line-height: 1.5; min-height: 100vh; }
 a { color: var(--acc); }
 img, video { max-width: 100%; display: block; }
@@ -57,7 +57,7 @@ main.narrow { max-width: 760px; }
   .logo { font-size: 20px; }
   .top .btn.sm { padding: 0 14px; min-height: 40px; }
   main.page { padding: 20px 16px calc(40px + var(--tabbar) + env(safe-area-inset-bottom)); gap: 28px; }
-  .tabbar { display: flex; position: fixed; left: 0; right: 0; bottom: 0; z-index: 30; background: rgba(10,20,32,.97); border-top: 1px solid var(--line); padding-bottom: env(safe-area-inset-bottom); }
+  .tabbar { display: flex; position: fixed; left: 0; right: 0; bottom: 0; z-index: 30; transform: translate3d(0, var(--vvshift, 0px), 0); will-change: transform; -webkit-backface-visibility: hidden; background: rgba(10,20,32,.97); border-top: 1px solid var(--line); padding-bottom: env(safe-area-inset-bottom); }
   .tabbar a { flex: 1; height: 64px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; color: var(--muted); text-decoration: none; font-size: 12px; font-weight: 700; position: relative; }
   .tabbar a.on { color: var(--acc); }
   .tabbar svg { width: 24px; height: 24px; }
