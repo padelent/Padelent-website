@@ -1969,15 +1969,6 @@
     document.addEventListener('visibilitychange', check);
     document.addEventListener('touchstart', function () { setTimeout(check, 300); }, { passive: true });
     if (window.visualViewport) window.visualViewport.addEventListener('resize', function () { setTimeout(check, 100); });
-    // iPhone sometimes leaves the visible area offset after the keyboard or a page change; keep the bar pinned to the bottom of what you can see.
-    if (window.visualViewport) {
-      var vv = window.visualViewport, root = document.documentElement;
-      var pin = function () {
-        var gap = window.innerHeight - (vv.height + vv.offsetTop);
-        root.style.setProperty('--vvshift', (gap > 1 && !document.body.classList.contains('kb') ? -gap : 0) + 'px');
-      };
-      vv.addEventListener('resize', pin); vv.addEventListener('scroll', pin); window.addEventListener('scroll', pin, { passive: true }); pin();
-    }
     document.addEventListener('focusout', function () {
       setTimeout(function () {
         if (typing(document.activeElement)) return;
