@@ -53,7 +53,7 @@ main.narrow { max-width: 760px; }
 /* App frame: header + page scroll inside .scroller; the bottom bar is the bottom of the frame, not pinned to the screen. */
 html:has(body.appshell), body.appshell { height: 100%; overflow: hidden; overscroll-behavior: none; }
 body.appshell { min-height: 0; }
-.shell { position: relative; height: 100vh; height: 100dvh; display: flex; flex-direction: column; overflow: hidden; }
+.shell { position: relative; height: 100vh; height: 100dvh; height: var(--apph, 100dvh); display: flex; flex-direction: column; overflow: hidden; }
 .scroller { flex: 1 1 auto; min-height: 0; overflow-y: auto; overflow-x: hidden; -webkit-overflow-scrolling: touch; overscroll-behavior-y: contain; }
 @media (max-width: 760px) {
   :root { --tabbar: 64px; }

@@ -1964,6 +1964,20 @@
     go('#/');
   }
 
+  // Home-screen app on iPhone: the app fills the whole screen, but iPhone reports the page height short by
+  // the status bar, which left a gap under the bottom bar. Use the real screen height instead.
+  (function () {
+    function size() {
+      if (!navigator.standalone || !window.screen) return;
+      var land = window.innerWidth > window.innerHeight;
+      var h = land ? Math.min(screen.width, screen.height) : Math.max(screen.width, screen.height);
+      document.documentElement.style.setProperty('--apph', h + 'px');
+    }
+    size();
+    window.addEventListener('orientationchange', function () { setTimeout(size, 300); });
+    window.addEventListener('resize', size);
+  })();
+
   // iPhone: hide the bottom bar while typing. The app is a fixed frame (the window itself never scrolls),
   // so after the keyboard closes we simply put the window back at the top and everything is in place.
   (function () {
