@@ -330,3 +330,7 @@ a.lopt:hover, a.lopt:focus-visible { border-color: var(--acc); }
 
 .soon.on { background: rgba(215,242,58,.18); color: var(--acc); }
 .panel.plan { border-color: rgba(215,242,58,.45); }
+
+/* Local price next to a price in pounds */
+.fx { color: var(--muted); font-weight: 500; font-size: .78em; margin-left: 2px; white-space: nowrap; letter-spacing: 0; font-family: var(--body); }
+.fx:empty { display: none; }

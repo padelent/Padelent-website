@@ -16,6 +16,83 @@
     });
   }
   function money(p) { p = Number(p) || 0; return '£' + (p % 100 ? (p / 100).toFixed(2) : String(p / 100)); }
+
+  // ---------- Local prices ----------
+  // Lessons are priced in pounds. Players abroad also see roughly what that is in their own money.
+  var CURS = [['GBP','British pound'],['EUR','Euro'],['USD','US dollar'],['AED','UAE dirham'],['KWD','Kuwaiti dinar'],['QAR','Qatari riyal'],
+    ['SAR','Saudi riyal'],['BHD','Bahraini dinar'],['OMR','Omani rial'],['THB','Thai baht'],['MYR','Malaysian ringgit'],['SGD','Singapore dollar'],
+    ['IDR','Indonesian rupiah'],['PHP','Philippine peso'],['HKD','Hong Kong dollar'],['JPY','Japanese yen'],['INR','Indian rupee'],['AUD','Australian dollar'],
+    ['NZD','New Zealand dollar'],['CAD','Canadian dollar'],['CHF','Swiss franc'],['SEK','Swedish krona'],['NOK','Norwegian krone'],['DKK','Danish krone'],
+    ['PLN','Polish zloty'],['CZK','Czech koruna'],['TRY','Turkish lira'],['EGP','Egyptian pound'],['MAD','Moroccan dirham'],['ZAR','South African rand'],
+    ['MXN','Mexican peso'],['ARS','Argentine peso'],['BRL','Brazilian real'],['CLP','Chilean peso']];
+  var REGION_CUR = { GB: 'GBP', IM: 'GBP', JE: 'GBP', GG: 'GBP', GI: 'GBP', US: 'USD', AE: 'AED', KW: 'KWD', QA: 'QAR', SA: 'SAR', BH: 'BHD', OM: 'OMR',
+    TH: 'THB', MY: 'MYR', SG: 'SGD', ID: 'IDR', PH: 'PHP', HK: 'HKD', JP: 'JPY', IN: 'INR', AU: 'AUD', NZ: 'NZD', CA: 'CAD', CH: 'CHF', LI: 'CHF',
+    SE: 'SEK', NO: 'NOK', DK: 'DKK', PL: 'PLN', CZ: 'CZK', TR: 'TRY', EG: 'EGP', MA: 'MAD', ZA: 'ZAR', MX: 'MXN', AR: 'ARS', BR: 'BRL', CL: 'CLP' };
+  'AT BE CY DE EE ES FI FR GR HR IE IT LT LU LV MC MT NL PT SI SK SM AD VA ME XK'.split(' ').forEach(function (r) { REGION_CUR[r] = 'EUR'; });
+  var TZ_REGION = { 'Europe/London': 'GB', 'Europe/Guernsey': 'GG', 'Europe/Jersey': 'JE', 'Europe/Isle_of_Man': 'IM', 'Europe/Gibraltar': 'GI',
+    'Europe/Dublin': 'IE', 'Europe/Madrid': 'ES', 'Atlantic/Canary': 'ES', 'Europe/Lisbon': 'PT', 'Atlantic/Madeira': 'PT', 'Atlantic/Azores': 'PT',
+    'Europe/Paris': 'FR', 'Europe/Berlin': 'DE', 'Europe/Rome': 'IT', 'Europe/Amsterdam': 'NL', 'Europe/Brussels': 'BE', 'Europe/Vienna': 'AT',
+    'Europe/Luxembourg': 'LU', 'Europe/Monaco': 'MC', 'Europe/Malta': 'MT', 'Europe/Helsinki': 'FI', 'Europe/Athens': 'GR', 'Europe/Tallinn': 'EE',
+    'Europe/Riga': 'LV', 'Europe/Vilnius': 'LT', 'Europe/Bratislava': 'SK', 'Europe/Ljubljana': 'SI', 'Europe/Zagreb': 'HR', 'Asia/Nicosia': 'CY',
+    'Europe/Stockholm': 'SE', 'Europe/Oslo': 'NO', 'Europe/Copenhagen': 'DK', 'Europe/Zurich': 'CH', 'Europe/Warsaw': 'PL', 'Europe/Prague': 'CZ',
+    'Europe/Istanbul': 'TR', 'Asia/Dubai': 'AE', 'Asia/Kuwait': 'KW', 'Asia/Qatar': 'QA', 'Asia/Riyadh': 'SA', 'Asia/Bahrain': 'BH', 'Asia/Muscat': 'OM',
+    'Asia/Bangkok': 'TH', 'Asia/Kuala_Lumpur': 'MY', 'Asia/Kuching': 'MY', 'Asia/Singapore': 'SG', 'Asia/Jakarta': 'ID', 'Asia/Makassar': 'ID',
+    'Asia/Manila': 'PH', 'Asia/Hong_Kong': 'HK', 'Asia/Tokyo': 'JP', 'Asia/Kolkata': 'IN', 'Asia/Calcutta': 'IN', 'Africa/Cairo': 'EG',
+    'Africa/Casablanca': 'MA', 'Africa/Johannesburg': 'ZA', 'Pacific/Auckland': 'NZ', 'America/Mexico_City': 'MX', 'America/Cancun': 'MX',
+    'America/Monterrey': 'MX', 'America/Tijuana': 'MX', 'America/Sao_Paulo': 'BR', 'America/Santiago': 'CL', 'America/Toronto': 'CA',
+    'America/Vancouver': 'CA', 'America/Edmonton': 'CA', 'America/Winnipeg': 'CA', 'America/Halifax': 'CA', 'America/St_Johns': 'CA',
+    'America/Regina': 'CA', 'Pacific/Honolulu': 'US' };
+  function store(k, v) { try { if (v === undefined) return localStorage.getItem(k); if (v === null) localStorage.removeItem(k); else localStorage.setItem(k, v); } catch (e) { return null; } }
+  function guessCurrency() {
+    var tz = ''; try { tz = Intl.DateTimeFormat().resolvedOptions().timeZone || ''; } catch (e) {}
+    var r = TZ_REGION[tz];
+    if (!r && /^Australia\//.test(tz)) r = 'AU';
+    if (!r && /^America\/Argentina\//.test(tz)) r = 'AR';
+    if (!r && /^America\/(New_York|Chicago|Denver|Los_Angeles|Phoenix|Anchorage|Detroit|Boise|Indiana|Kentucky)/.test(tz)) r = 'US';
+    if (r && REGION_CUR[r]) return REGION_CUR[r];
+    var langs = navigator.languages || [navigator.language || ''];
+    for (var i = 0; i < langs.length; i++) { var m = /[-_]([A-Za-z]{2})\b/.exec(langs[i] || ''); if (m && REGION_CUR[m[1].toUpperCase()]) return REGION_CUR[m[1].toUpperCase()]; }
+    return 'GBP';
+  }
+  function chosenCurrency() { var c = store('pd_cur'); return c && c !== 'auto' ? c : guessCurrency(); }
+  var fxRates = null;
+  (function () { try { var j = JSON.parse(store('pd_fx') || 'null'); if (j && j.rates) fxRates = j; } catch (e) {} })();
+  function loadRates() {
+    if (chosenCurrency() === 'GBP') return;
+    if (fxRates && Date.now() - fxRates.t < 12 * 3600 * 1000) return;
+    fetch('https://open.er-api.com/v6/latest/GBP').then(function (r) { return r.json(); }).then(function (j) {
+      if (!j || !j.rates) return;
+      fxRates = { t: Date.now(), rates: j.rates }; store('pd_fx', JSON.stringify(fxRates)); fillFx();
+    }).catch(function () {});
+  }
+  function fxText(p) {
+    var cur = chosenCurrency(), rate = fxRates && fxRates.rates && fxRates.rates[cur];
+    p = Number(p) || 0;
+    if (cur === 'GBP' || !rate || !p) return '';
+    var v = p / 100 * rate;
+    var d = v < 100 && /^(KWD|BHD|OMR)$/.test(cur) ? 1 : 0;  // it's a guide, so keep it round
+    if (v >= 1000) v = Math.round(v / 10) * 10;
+    var o = { style: 'currency', currency: cur, minimumFractionDigits: d, maximumFractionDigits: d };
+    try { return '≈ ' + new Intl.NumberFormat(undefined, Object.assign({ currencyDisplay: 'narrowSymbol' }, o)).format(v); } catch (e) {}
+    try { return '≈ ' + new Intl.NumberFormat(undefined, o).format(v); } catch (e) { return '≈ ' + cur + ' ' + v.toFixed(d); }
+  }
+  // A price in pounds, plus the local amount next to it (filled in once the exchange rate is known).
+  function price(p) { return money(p) + '<span class="fx" data-fx="' + (Number(p) || 0) + '"></span>'; }
+  function fillFx(root) {
+    $$('[data-fx]', root).forEach(function (el) { var t = fxText(el.getAttribute('data-fx')); el.textContent = t ? ' ' + t : ''; });
+  }
+  function currencyPanel() {
+    var saved = store('pd_cur') || 'auto', g = guessCurrency();
+    var name = function (c) { var x = CURS.filter(function (k) { return k[0] === c; })[0]; return x ? x[1] + ' (' + c + ')' : c; };
+    return '<div class="panel" style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap"><div><b>Show prices in</b>' +
+      '<div class="muted small">Lessons are charged in pounds. We also show roughly what that is in your money. <a href="https://www.exchangerate-api.com" target="_blank" rel="noopener">Rates by Exchange Rate API</a></div></div>' +
+      '<select class="in" id="cur" style="max-width:260px"><option value="auto"' + (saved === 'auto' ? ' selected' : '') + '>Automatic: ' + esc(name(g)) + '</option>' +
+      CURS.map(function (k) { return '<option value="' + k[0] + '"' + (saved === k[0] ? ' selected' : '') + '>' + esc(k[1] + ' (' + k[0] + ')') + '</option>'; }).join('') + '</select></div>';
+  }
+  function wireCurrency() {
+    var sel = $('#cur'); if (!sel) return;
+    sel.onchange = function () { store('pd_cur', sel.value === 'auto' ? null : sel.value); loadRates(); fillFx(); toast('Prices will show in ' + chosenCurrency()); };
+  }
   function initials(n) {
     var w = String(n || '').trim().split(/\s+/).filter(Boolean);
     return (w.length ? w.slice(0, 2).map(function (x) { return x[0]; }).join('') : '?').toUpperCase();
@@ -352,7 +429,7 @@
   function render(html) {
     document.body.classList.remove('kb'); $app.innerHTML = html;
     document.body.classList.toggle('appshell', !!$app.querySelector('.shell'));
-    updateBadges(); wirePushPrompt(); window.scrollTo(0, 0);
+    updateBadges(); wirePushPrompt(); fillFx(); window.scrollTo(0, 0);
   }
   // The page scrolls inside the app frame, not the whole window.
   function scroller() { return document.getElementById('scroller') || document.scrollingElement; }
@@ -392,9 +469,9 @@
     else window.prompt('Copy this link:', url);
   }
   function priceLabel(c) {
-    if (c.offers_single) return money(c.price_pence) + '<span class="muted"> / lesson</span>';
+    if (c.offers_single) return price(c.price_pence) + '<span class="muted"> / lesson</span>';
     if (c.offers_free) return 'Free trial';
-    if (c.offers_monthly && c.monthly_price_pence) return money(c.monthly_price_pence) + '<span class="muted"> / month</span>';
+    if (c.offers_monthly && c.monthly_price_pence) return price(c.monthly_price_pence) + '<span class="muted"> / month</span>';
     return '';
   }
   function fmtRating(x) { var r = Math.round(Number(x) * 100) / 100; return r % 1 === 0 ? r.toFixed(1) : String(r); }
@@ -842,7 +919,7 @@
         '</div></section>';
 
       var stats = '<div class="cpstats">' +
-        '<div><b>' + (c.offers_single || !c.offers_free ? money(c.price_pence) : 'Free') + '</b><span>' + (c.offers_single || !c.offers_free ? 'Per lesson' : 'Trial lesson') + '</span></div>' +
+        '<div><b>' + (c.offers_single || !c.offers_free ? price(c.price_pence) : 'Free') + '</b><span>' + (c.offers_single || !c.offers_free ? 'Per lesson' : 'Trial lesson') + '</span></div>' +
         '<div><b>' + (c.lessons_done || 0) + '</b><span>Lesson' + (c.lessons_done === 1 ? '' : 's') + ' given</span></div>' +
         '<div><b>' + (c.review_count ? fmtRating(c.avg_rating) + ' ' + I.star(true, 20) : 'New') + '</b><span>' + (c.review_count ? c.review_count + ' rating' + (c.review_count === 1 ? '' : 's') : 'No ratings yet') + '</span></div></div>';
 
@@ -858,10 +935,10 @@
       }
       var tf = optTag('free', freeOk), ts = optTag('single', !paidOff);
       if (c.offers_free) opts.push(tf[0] + '<div><b>Free trial lesson' + (!freeOk && me && me.role === 'player' ? ' <i class="soon">Used</i>' : '') + '</b><span>One per player. Send a clip and ' + esc(fn) + ' will show you how they coach.</span></div><em>Free</em>' + tf[1]);
-      if (c.offers_single) opts.push(ts[0] + '<div><b>Single lesson' + (paidOff ? ' <i class="soon">Opening soon</i>' : '') + '</b><span>Up to 3 clips and a personal video reply with drills.</span></div><em>' + money(c.price_pence) + '</em>' + ts[1]);
+      if (c.offers_single) opts.push(ts[0] + '<div><b>Single lesson' + (paidOff ? ' <i class="soon">Opening soon</i>' : '') + '</b><span>Up to 3 clips and a personal video reply with drills.</span></div><em>' + price(c.price_pence) + '</em>' + ts[1]);
       var mOpen = monthlyOpen(c, bo), tm = optTag('monthly', mOpen);
       if (c.offers_monthly && c.monthly_price_pence) opts.push(tm[0] + '<div><b>Monthly plan' + (bo.plan ? ' <i class="soon on">Your plan</i>' : !mOpen ? ' <i class="soon">Opening soon</i>' : '') + '</b><span>' +
-        (bo.plan ? esc(planLine(bo.plan)) : 'Up to ' + plural(c.monthly_videos_per_week, 'lesson') + ' a week with ' + esc(fn) + '. Cancel any time.') + '</span></div><em>' + money(c.monthly_price_pence) + '<small>/month</small></em>' + tm[1]);
+        (bo.plan ? esc(planLine(bo.plan)) : 'Up to ' + plural(c.monthly_videos_per_week, 'lesson') + ' a week with ' + esc(fn) + '. Cancel any time.') + '</span></div><em>' + price(c.monthly_price_pence) + '<small>/month</small></em>' + tm[1]);
       var lessonsSec = opts.length ? '<section class="cpsec"><div class="lab">Lessons</div><div class="lopts">' + opts.join('') + '</div></section>' : '';
       var specs = (c.specialities || []).length ? '<section class="cpsec"><div class="lab">Specialities</div><ul class="ticks">' +
         c.specialities.map(function (x) { return '<li>' + tickList + esc(x) + '</li>'; }).join('') + '</ul></section>' : '';
@@ -884,7 +961,7 @@
       var singleOk = c.offers_single && !paidOff;
       var bookable = singleOk || (c.offers_free && freeOk) || monthlyOpen(c, bo);
       var bar = canBook && bookable
-        ? '<div class="cpbar"><div class="price">' + (c.offers_free && freeOk ? '<b>Free trial</b><span>' + (singleOk ? 'then ' + money(c.price_pence) + ' per lesson' : 'one per player') + '</span>' : '<b>' + money(c.price_pence) + '</b><span>per lesson</span>') + '</div><a class="btn acc big" href="' + bookHref + '">' + (c.offers_free && freeOk ? 'Try a free lesson' : 'Book a lesson') + '</a></div>'
+        ? '<div class="cpbar"><div class="price">' + (c.offers_free && freeOk ? '<b>Free trial</b><span>' + (singleOk ? 'then ' + price(c.price_pence) + ' per lesson' : 'one per player') + '</span>' : '<b>' + price(c.price_pence) + '</b><span>per lesson</span>') + '</div><a class="btn acc big" href="' + bookHref + '">' + (c.offers_free && freeOk ? 'Try a free lesson' : 'Book a lesson') + '</a></div>'
         : (isMe ? '<div class="cpbar"><div class="price"><b>Your profile</b><span>' + (preview ? 'Only you can see it until approved' : 'This is what players see') + '</span></div><button class="btn" id="share">Copy link</button><a class="btn acc" href="#/profile">Edit</a></div>' : '');
 
       render(shell('coaches',
@@ -1019,8 +1096,8 @@
       if (want === 'monthly' && mOK) kind = 'monthly';
       var kinds = [];
       if (c.offers_free && freeOk) kinds.push(['free', 'Free trial lesson', 'Free', 'One per player. ' + fn + ' will look at your clip and show you how they coach.']);
-      if (c.offers_single) kinds.push(['single', 'Single lesson', money(c.price_pence), 'A personal video reply with drills to practise.']);
-      if (mOK) kinds.push(['monthly', plan ? 'Use your monthly plan' : 'Monthly plan', plan ? 'Included' : money(c.monthly_price_pence) + '/month',
+      if (c.offers_single) kinds.push(['single', 'Single lesson', price(c.price_pence), 'A personal video reply with drills to practise.']);
+      if (mOK) kinds.push(['monthly', plan ? 'Use your monthly plan' : 'Monthly plan', plan ? 'Included' : price(c.monthly_price_pence) + '/month',
         plan ? planLine(plan) : 'Up to ' + plural(c.monthly_videos_per_week, 'lesson') + ' a week with ' + fn + '. This is your first one. Cancel any time.']);
       var p = me.player || {};
       var gameMissing = p.level == null || !p.side;
@@ -1047,16 +1124,16 @@
         var n = $('#sumnote');
         if (kind === 'monthly') {
           $('#sumname').textContent = plan ? 'Lesson on your monthly plan' : 'Monthly plan with ' + fn;
-          $('#sumprice').textContent = plan ? 'Included' : money(c.monthly_price_pence) + '/month';
+          $('#sumprice').innerHTML = plan ? 'Included' : price(c.monthly_price_pence) + '/month'; fillFx($('#sumprice'));
           n.className = 'small muted'; n.style.color = '';
           n.textContent = plan ? planLine(plan) + '.'
             : 'You start your plan by card with Stripe on the next step, and this is your first lesson. It renews each month until you cancel, which you can do any time from your lessons with ' + fn + '.';
           return;
         }
         $('#sumname').textContent = (free ? 'Free trial lesson' : 'Video lesson') + ' with ' + fn;
-        $('#sumprice').textContent = free ? 'Free' : money(c.price_pence);
+        $('#sumprice').innerHTML = free ? 'Free' : price(c.price_pence); fillFx($('#sumprice'));
         if (free) { n.textContent = 'No payment needed. You can have one free lesson with each coach.'; n.style.color = ''; n.className = 'small muted'; }
-        else if (opts.payments) { n.textContent = 'You pay securely by card with Stripe on the next step. If ' + fn + ' has not replied within 7 days, you get a full refund.'; n.className = 'small muted'; }
+        else if (opts.payments) { n.textContent = 'You pay securely by card with Stripe on the next step. If ' + fn + ' has not replied within 7 days, you get a full refund.' + (fxText(c.price_pence) ? ' The ≈ amount is a guide using today\'s exchange rate. You see the exact amount before you pay.' : ''); n.className = 'small muted'; }
         else { n.textContent = 'Test mode: card payments are not switched on yet, so this lesson is free.'; n.className = 'small'; n.style.color = 'var(--acc)'; n.style.fontWeight = '700'; }
       }
       $$('#kinds .lopt').forEach(function (b) { b.onclick = function () { kind = b.getAttribute('data-kind'); $$('#kinds .lopt').forEach(function (x) { x.classList.toggle('on', x === b); }); summary(); }; });
@@ -1370,7 +1447,7 @@
         '<span><b>' + esc(o.full_name) + '</b><br><span class="muted small">' + esc(o.club || '') + '</span><br><span class="link small" style="min-height:0">View profile</span></span></a>';
       if (sp.plan) {
         var pl = sp.plan;
-        aside += '<div class="panel plan" id="plan"><div style="display:flex;justify-content:space-between;align-items:center;gap:8px"><h3>Your monthly plan</h3><b>' + money(pl.price_pence) + '<span class="muted small">/month</span></b></div>' +
+        aside += '<div class="panel plan" id="plan"><div style="display:flex;justify-content:space-between;align-items:center;gap:8px"><h3>Your monthly plan</h3><b>' + price(pl.price_pence) + '<span class="muted small">/month</span></b></div>' +
           '<p class="small" style="margin:6px 0 0;color:#D5DEE6">Up to ' + plural(pl.videos_per_week, 'lesson') + ' a week.</p>' +
           '<p class="small muted" style="margin:4px 0 0">' + esc(planLine(pl)) + '</p>' +
           '<div class="acts" style="margin-top:10px">' + (pl.status === 'active' && pl.used < pl.videos_per_week ? '<a class="btn acc sm" href="#/book/' + o.id + '?kind=monthly">Send a lesson</a>' : '') +
@@ -1443,7 +1520,7 @@
         '<div class="files" id="files"></div>' +
         '<div class="acts"><button type="button" class="btn" id="add">+ Add video</button><input type="file" id="pick" accept="video/*" multiple hidden>' +
         '<span style="flex:1"></span><button type="submit" class="btn acc" data-done="0">Send</button></div><p class="err" id="e" hidden></p></form>' +
-        '<div class="panel" style="display:flex;justify-content:space-between;align-items:center;gap:14px;flex-wrap:wrap"><div><b>Want a full new lesson?</b><div class="muted small">' + money(o.price_pence) + ' per lesson. It goes into this same space.</div></div><a class="btn" href="#/book/' + o.id + '">Book another lesson</a></div>';
+        '<div class="panel" style="display:flex;justify-content:space-between;align-items:center;gap:14px;flex-wrap:wrap"><div><b>Want a full new lesson?</b><div class="muted small">' + price(o.price_pence) + ' per lesson. It goes into this same space.</div></div><a class="btn" href="#/book/' + o.id + '">Book another lesson</a></div>';
     } else if (open) {
       composer = '<form class="panel composer" id="cf"><h3>Add to this lesson</h3><p class="muted small">Forgot something? Send ' + esc(fn) + ' another message or clip.</p>' +
         '<textarea class="in" name="body" rows="3" maxlength="5000" placeholder="Message to ' + esc(fn) + '"></textarea>' +
@@ -1451,7 +1528,7 @@
         '<div class="acts"><button type="button" class="btn" id="add">+ Add video</button><input type="file" id="pick" accept="video/*" multiple hidden>' +
         '<span style="flex:1"></span><button type="submit" class="btn acc" data-done="0">Send</button></div><p class="err" id="e" hidden></p></form>';
     } else {
-      composer = '<div class="panel" style="display:flex;justify-content:space-between;align-items:center;gap:14px;flex-wrap:wrap"><div><b>Ready for your next lesson?</b><div class="muted small">' + money(o.price_pence) + ' per lesson. It goes into this same space.</div></div><a class="btn acc" href="#/book/' + o.id + '">Book another lesson</a></div>';
+      composer = '<div class="panel" style="display:flex;justify-content:space-between;align-items:center;gap:14px;flex-wrap:wrap"><div><b>Ready for your next lesson?</b><div class="muted small">' + price(o.price_pence) + ' per lesson. It goes into this same space.</div></div><a class="btn acc" href="#/book/' + o.id + '">Book another lesson</a></div>';
     }
 
     render(shell('lessons',
@@ -1584,12 +1661,12 @@
   function segVal(name) { var b = $('[data-seg="' + name + '"] .chip.on'); return b ? b.getAttribute('data-v') : ''; }
   function multiVal(name) { return $$('[data-multi="' + name + '"] .chip.on').map(function (b) { return b.textContent; }); }
   function logoutBtn() {
-    return pushPanel() + '<div class="panel" style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap"><div><b>' + esc(me.full_name) + '</b><div class="muted small">' + esc((session && session.user && session.user.email) || '') + '</div></div>' +
+    return pushPanel() + currencyPanel() + '<div class="panel" style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap"><div><b>' + esc(me.full_name) + '</b><div class="muted small">' + esc((session && session.user && session.user.email) || '') + '</div></div>' +
       '<div style="display:flex;gap:10px;flex-wrap:wrap"><a class="btn sm" href="mailto:' + esc(C.contactEmail) + '">Help</a><button class="btn sm" id="logout">Log out</button></div></div>' +
       '<p class="small muted" style="text-align:center"><a href="/terms.html" target="_blank">Terms</a> · <a href="/privacy.html" target="_blank">Privacy</a></p>';
   }
   function wireLogout() {
-    wirePushPanel();
+    wirePushPanel(); wireCurrency();
     var b = $('#logout'); if (!b) return;
     b.onclick = function () {
       b.disabled = true;
@@ -1998,6 +2075,7 @@
   })();
 
   function boot() {
+    loadRates();
     if (!SB || !KEY) { $app.innerHTML = '<div class="empty"><h2>App not configured</h2></div>'; return; }
     var h = location.hash;
     // Links from our emails (confirm account, reset password) come back with the login in the address.
