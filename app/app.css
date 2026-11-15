@@ -50,6 +50,11 @@ p { margin: 0; }
 main.page { max-width: 1240px; margin: 0 auto; padding: 32px 20px calc(80px + var(--tabbar)); display: flex; flex-direction: column; gap: 40px; }
 main.narrow { max-width: 760px; }
 .tabbar { display: none; }
+/* App frame: header + page scroll inside .scroller; the bottom bar is the bottom of the frame, not pinned to the screen. */
+html:has(body.appshell), body.appshell { height: 100%; overflow: hidden; overscroll-behavior: none; }
+body.appshell { min-height: 0; }
+.shell { position: relative; height: 100vh; height: 100dvh; display: flex; flex-direction: column; overflow: hidden; }
+.scroller { flex: 1 1 auto; min-height: 0; overflow-y: auto; overflow-x: hidden; -webkit-overflow-scrolling: touch; overscroll-behavior-y: contain; }
 @media (max-width: 760px) {
   :root { --tabbar: 64px; }
   .nav { display: none; }
@@ -57,7 +62,7 @@ main.narrow { max-width: 760px; }
   .logo { font-size: 20px; }
   .top .btn.sm { padding: 0 14px; min-height: 40px; }
   main.page { padding: 20px 16px calc(40px + var(--tabbar) + env(safe-area-inset-bottom)); gap: 28px; }
-  .tabbar { display: flex; position: fixed; left: 0; right: 0; bottom: 0; z-index: 30; background: rgba(10,20,32,.97); border-top: 1px solid var(--line); padding-bottom: env(safe-area-inset-bottom); }
+  .tabbar { display: flex; flex: none; position: relative; z-index: 30; background: rgba(10,20,32,.97); border-top: 1px solid var(--line); padding-bottom: env(safe-area-inset-bottom); }
   .tabbar a { flex: 1; height: 64px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; color: var(--muted); text-decoration: none; font-size: 12px; font-weight: 700; position: relative; }
   .tabbar a.on { color: var(--acc); }
   .tabbar svg { width: 24px; height: 24px; }
@@ -151,7 +156,7 @@ textarea.in { min-height: 110px; resize: vertical; line-height: 1.5; }
 .bar i b { display: block; height: 100%; background: var(--acc); }
 .sticky-cta { display: none; }
 @media (max-width: 900px) {
-  .sticky-cta { display: flex; position: fixed; left: 0; right: 0; bottom: calc(var(--tabbar) + env(safe-area-inset-bottom)); z-index: 25; background: rgba(10,20,32,.97); border-top: 1px solid var(--line); padding: 10px 16px; gap: 12px; align-items: center; }
+  .sticky-cta { display: flex; position: absolute; left: 0; right: 0; bottom: calc(var(--tabbar) + env(safe-area-inset-bottom)); z-index: 25; background: rgba(10,20,32,.97); border-top: 1px solid var(--line); padding: 10px 16px; gap: 12px; align-items: center; }
 }
 
 /* ---------- Lessons ---------- */
@@ -258,7 +263,7 @@ details.game summary::-webkit-details-marker { display: none; }
 .rv-top { display: flex; gap: 12px; align-items: center; }
 .rv .rate { background: #fff; color: var(--navy); border-radius: 12px; padding: 6px 12px; font-weight: 800; display: inline-flex; align-items: center; gap: 6px; box-shadow: 0 4px 14px rgba(0,0,0,.25); }
 .rv p { color: var(--soft); font-size: 16px; }
-.cpbar { position: fixed; left: 50%; transform: translateX(-50%); bottom: 16px; z-index: 25; width: min(728px, calc(100% - 32px)); display: flex; align-items: center; gap: 14px; background: rgba(27,37,48,.97); border: 1px solid var(--line); border-radius: 20px; padding: 10px 10px 10px 18px; box-shadow: 0 10px 30px rgba(0,0,0,.4); }
+.cpbar { position: absolute; left: 50%; transform: translateX(-50%); bottom: 16px; z-index: 25; width: min(728px, calc(100% - 32px)); display: flex; align-items: center; gap: 14px; background: rgba(27,37,48,.97); border: 1px solid var(--line); border-radius: 20px; padding: 10px 10px 10px 18px; box-shadow: 0 10px 30px rgba(0,0,0,.4); }
 .cpbar .price { flex: 1; display: flex; flex-direction: column; line-height: 1.2; }
 .cpbar .price b { font-family: var(--head); font-weight: 800; font-size: 20px; }
 .cpbar .price span { color: var(--muted); font-size: 13px; }

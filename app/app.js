@@ -341,15 +341,21 @@
       return '<a href="' + n[0] + '" class="' + (n[3] === active ? 'on' : '') + '">' + I[n[2]] + '<span>' + n[1] + '</span>' +
         (n[4] ? '<span class="dot" data-badge style="display:none"></span>' : '') + '</a>';
     }).join('') + '</nav>' : '';
-    return '<header class="top"><div class="top-in">' +
+    return '<div class="shell"><div class="scroller" id="scroller"><header class="top"><div class="top-in">' +
       '<a class="logo" href="#/">' + I.logo + 'Padelent</a>' +
       (me ? '<span class="pill-tag">' + (me.role === 'coach' ? 'Coach' : 'Player') + '</span>' : '') +
       '<nav class="nav" aria-label="Main">' + nav + '</nav>' +
       '<div style="display:flex;gap:10px;align-items:center;' + (me ? '' : 'margin-left:auto') + '">' + right + '</div>' +
       '</div></header>' +
-      '<main class="page' + (opts.narrow ? ' narrow' : '') + '" id="main">' + inner + '</main>' + tabs;
+      '<main class="page' + (opts.narrow ? ' narrow' : '') + '" id="main">' + inner + '</main></div>' + tabs + '</div>';
   }
-  function render(html) { document.body.classList.remove('kb'); $app.innerHTML = html; updateBadges(); wirePushPrompt(); window.scrollTo(0, 0); }
+  function render(html) {
+    document.body.classList.remove('kb'); $app.innerHTML = html;
+    document.body.classList.toggle('appshell', !!$app.querySelector('.shell'));
+    updateBadges(); wirePushPrompt(); window.scrollTo(0, 0);
+  }
+  // The page scrolls inside the app frame, not the whole window.
+  function scroller() { return document.getElementById('scroller') || document.scrollingElement; }
   function loading(active) { render(shell(active, '<div class="boot" style="min-height:40vh"><span class="spinner"></span></div>')); }
   function failed(active, e) {
     render(shell(active, '<div class="empty"><h2>Something went wrong</h2><p class="muted">' + esc(e && e.message) +
@@ -1468,7 +1474,7 @@
       };
     });
     $$('[data-jump]').forEach(function (a) { a.onclick = function (ev) { ev.preventDefault(); var el = document.getElementById('l-' + a.getAttribute('data-jump')); if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' }); }; });
-    if (lessons.length > 1 && last) { var el = document.getElementById('l-' + last.id); if (el) setTimeout(function () { el.scrollIntoView({ block: 'start' }); window.scrollBy(0, -90); }, 50); }
+    if (lessons.length > 1 && last) { var el = document.getElementById('l-' + last.id); if (el) setTimeout(function () { el.scrollIntoView({ block: 'start' }); scroller().scrollTop -= 90; }, 50); }
     if (window.matchMedia('(max-width: 900px)').matches) { var d = $('details.game'); if (d) d.open = false; }
 
     var form = $('#cf');
@@ -1958,24 +1964,23 @@
     go('#/');
   }
 
-  // iPhone: hide the bottom bar while typing, and put it back in place when the keyboard closes.
+  // iPhone: hide the bottom bar while typing. The app is a fixed frame (the window itself never scrolls),
+  // so after the keyboard closes we simply put the window back at the top and everything is in place.
   (function () {
     function typing(el) { return el && (el.tagName === 'TEXTAREA' || (el.tagName === 'INPUT' && !/^(checkbox|radio|file|button|submit|range)$/i.test(el.type)) || el.isContentEditable); }
+    function reset() {
+      if (typing(document.activeElement)) return;
+      document.body.classList.remove('kb');
+      if (document.body.classList.contains('appshell') && (window.scrollY || window.scrollX)) window.scrollTo(0, 0);
+    }
     document.addEventListener('focusin', function (e) { if (typing(e.target)) document.body.classList.add('kb'); });
-    // Safety net: never leave the bar hidden when nothing is being typed (iPhone skips focusout when a page changes).
-    function check() { if (!typing(document.activeElement)) document.body.classList.remove('kb'); }
-    window.addEventListener('hashchange', check);
-    window.addEventListener('pageshow', check);
-    document.addEventListener('visibilitychange', check);
-    document.addEventListener('touchstart', function () { setTimeout(check, 300); }, { passive: true });
-    if (window.visualViewport) window.visualViewport.addEventListener('resize', function () { setTimeout(check, 100); });
-    document.addEventListener('focusout', function () {
-      setTimeout(function () {
-        if (typing(document.activeElement)) return;
-        document.body.classList.remove('kb');
-        window.scrollTo(window.scrollX, window.scrollY + 1); window.scrollTo(window.scrollX, window.scrollY - 1);
-      }, 80);
-    });
+    document.addEventListener('focusout', function () { setTimeout(reset, 80); setTimeout(reset, 400); });
+    window.addEventListener('hashchange', reset);
+    window.addEventListener('pageshow', reset);
+    window.addEventListener('scroll', function () { if (!typing(document.activeElement)) setTimeout(reset, 50); }, { passive: true });
+    document.addEventListener('visibilitychange', reset);
+    document.addEventListener('touchstart', function () { setTimeout(reset, 300); }, { passive: true });
+    if (window.visualViewport) window.visualViewport.addEventListener('resize', function () { setTimeout(reset, 100); });
   })();
 
   function boot() {
