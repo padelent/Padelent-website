@@ -42,7 +42,7 @@
     'America/Monterrey': 'MX', 'America/Tijuana': 'MX', 'America/Sao_Paulo': 'BR', 'America/Santiago': 'CL', 'America/Toronto': 'CA',
     'America/Vancouver': 'CA', 'America/Edmonton': 'CA', 'America/Winnipeg': 'CA', 'America/Halifax': 'CA', 'America/St_Johns': 'CA',
     'America/Regina': 'CA', 'Pacific/Honolulu': 'US' };
-  function store(k, v) { try { if (v === undefined) return localStorage.getItem(k); if (v === null) localStorage.removeItem(k); else localStorage.setItem(k, v); } catch (e) { return null; } }
+  function fxStore(k, v) { try { if (v === undefined) return localStorage.getItem(k); if (v === null) localStorage.removeItem(k); else localStorage.setItem(k, v); } catch (e) { return null; } }
   function guessCurrency() {
     var tz = ''; try { tz = Intl.DateTimeFormat().resolvedOptions().timeZone || ''; } catch (e) {}
     var r = TZ_REGION[tz];
@@ -54,15 +54,15 @@
     for (var i = 0; i < langs.length; i++) { var m = /[-_]([A-Za-z]{2})\b/.exec(langs[i] || ''); if (m && REGION_CUR[m[1].toUpperCase()]) return REGION_CUR[m[1].toUpperCase()]; }
     return 'GBP';
   }
-  function chosenCurrency() { var c = store('pd_cur'); return c && c !== 'auto' ? c : guessCurrency(); }
+  function chosenCurrency() { var c = fxStore('pd_cur'); return c && c !== 'auto' ? c : guessCurrency(); }
   var fxRates = null;
-  (function () { try { var j = JSON.parse(store('pd_fx') || 'null'); if (j && j.rates) fxRates = j; } catch (e) {} })();
+  (function () { try { var j = JSON.parse(fxStore('pd_fx') || 'null'); if (j && j.rates) fxRates = j; } catch (e) {} })();
   function loadRates() {
     if (chosenCurrency() === 'GBP') return;
     if (fxRates && Date.now() - fxRates.t < 12 * 3600 * 1000) return;
     fetch('https://open.er-api.com/v6/latest/GBP').then(function (r) { return r.json(); }).then(function (j) {
       if (!j || !j.rates) return;
-      fxRates = { t: Date.now(), rates: j.rates }; store('pd_fx', JSON.stringify(fxRates)); fillFx();
+      fxRates = { t: Date.now(), rates: j.rates }; fxStore('pd_fx', JSON.stringify(fxRates)); fillFx();
     }).catch(function () {});
   }
   function fxText(p) {
@@ -82,7 +82,7 @@
     $$('[data-fx]', root).forEach(function (el) { var t = fxText(el.getAttribute('data-fx')); el.textContent = t ? ' ' + t : ''; });
   }
   function currencyPanel() {
-    var saved = store('pd_cur') || 'auto', g = guessCurrency();
+    var saved = fxStore('pd_cur') || 'auto', g = guessCurrency();
     var name = function (c) { var x = CURS.filter(function (k) { return k[0] === c; })[0]; return x ? x[1] + ' (' + c + ')' : c; };
     return '<div class="panel" style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap"><div><b>Show prices in</b>' +
       '<div class="muted small">Lessons are charged in pounds. We also show roughly what that is in your money. <a href="https://www.exchangerate-api.com" target="_blank" rel="noopener">Rates by Exchange Rate API</a></div></div>' +
@@ -91,7 +91,7 @@
   }
   function wireCurrency() {
     var sel = $('#cur'); if (!sel) return;
-    sel.onchange = function () { store('pd_cur', sel.value === 'auto' ? null : sel.value); loadRates(); fillFx(); toast('Prices will show in ' + chosenCurrency()); };
+    sel.onchange = function () { fxStore('pd_cur', sel.value === 'auto' ? null : sel.value); loadRates(); fillFx(); toast('Prices will show in ' + chosenCurrency()); };
   }
   function initials(n) {
     var w = String(n || '').trim().split(/\s+/).filter(Boolean);
