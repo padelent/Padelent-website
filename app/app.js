@@ -1028,11 +1028,11 @@
 
   /* Coach payouts (Stripe Connect Express) */
   // Countries Stripe can pay coaches in (from a UK platform).
+  // Countries Stripe can pay coaches in from Padelent (a UK platform): UK, Europe, Switzerland, US and Canada.
   var PAYOUT_COUNTRIES = [['GB', 'United Kingdom'], ['IE', 'Ireland'], ['ES', 'Spain'], ['NL', 'Netherlands'], ['PT', 'Portugal'], ['FR', 'France'],
     ['IT', 'Italy'], ['DE', 'Germany'], ['BE', 'Belgium'], ['SE', 'Sweden'], ['DK', 'Denmark'], ['NO', 'Norway'], ['FI', 'Finland'], ['CH', 'Switzerland'],
-    ['AT', 'Austria'], ['PL', 'Poland'], ['GR', 'Greece'], ['LU', 'Luxembourg'], ['AE', 'United Arab Emirates'], ['MY', 'Malaysia'], ['SG', 'Singapore'],
-    ['ID', 'Indonesia'], ['TH', 'Thailand'], ['AU', 'Australia'], ['NZ', 'New Zealand'], ['US', 'United States'], ['CA', 'Canada'], ['MX', 'Mexico'],
-    ['AR', 'Argentina'], ['BR', 'Brazil'], ['CL', 'Chile'], ['ZA', 'South Africa']];
+    ['AT', 'Austria'], ['PL', 'Poland'], ['GR', 'Greece'], ['LU', 'Luxembourg'], ['CZ', 'Czech Republic'], ['HU', 'Hungary'], ['RO', 'Romania'],
+    ['HR', 'Croatia'], ['CY', 'Cyprus'], ['MT', 'Malta'], ['US', 'United States'], ['CA', 'Canada']];
   function pagePayouts() {
     if (!needPlayer()) return;
     if (me.role !== 'coach') return go('#/');
@@ -1054,7 +1054,7 @@
       } else {
         var cc = st.country || 'GB';
         var countryPick = st.has_account && st.details_submitted ? '' :
-          '<label class="f">Country you live in <span class="hint">Your bank account must be in this country. You cannot change it once Stripe has your details.</span>' +
+          '<label class="f">Country you live in <span class="hint">Your bank account must be in this country. You cannot change it once Stripe has your details. Country not listed? Stripe can\'t pay out there from Padelent yet, so message us and we\'ll sort it out.</span>' +
           '<select class="in" id="country">' + PAYOUT_COUNTRIES.map(function (x) { return '<option value="' + x[0] + '"' + (x[0] === cc ? ' selected' : '') + '>' + esc(x[1]) + '</option>'; }).join('') + '</select></label>';
         body = '<div class="panel" style="display:flex;flex-direction:column;gap:14px"><h3>' + (st.has_account && st.details_submitted ? 'Stripe is checking your details' : st.has_account ? 'Finish setting up payouts' : 'Set up payouts') + '</h3>' + countryPick +
           (st.has_account && st.details_submitted ? '<p class="muted" style="margin:0">This usually takes a few minutes. If Stripe needs anything else, tap the button below.</p>'

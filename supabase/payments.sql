@@ -135,6 +135,11 @@ begin
   if c.id is null then raise exception 'Only coach accounts have payouts.'; end if;
   v_country := upper(coalesce(nullif(trim(p_country), ''), c.payout_country, 'GB'));
   if v_country !~ '^[A-Z]{2}$' then raise exception 'Pick the country you live in.'; end if;
+  -- Stripe can pay coaches from a UK platform in the UK, Europe, Switzerland, the US and Canada.
+  if v_country <> all(array['GB','IE','ES','NL','PT','FR','IT','DE','BE','SE','DK','NO','FI','CH','AT','PL','GR','LU','CZ','HU','RO','BG','HR',
+                            'SI','SK','EE','LV','LT','CY','MT','IS','LI','US','CA']) then
+    raise exception 'Stripe can''t send payouts to that country from Padelent yet. Message Padelent and we''ll sort out another way to pay you.';
+  end if;
   -- Picked a different country before finishing setup: start a fresh Stripe account in that country.
   if c.stripe_account_id is not null and not c.payouts_ready and v_country <> coalesce(c.payout_country, 'GB') then
     update public.coaches set stripe_account_id = null where id = v_uid;
@@ -148,9 +153,13 @@ begin
       'identity', jsonb_build_object('country', v_country, 'entity_type', 'individual'),
       'dashboard', 'express',
       'defaults', jsonb_build_object('responsibilities', jsonb_build_object('fees_collector', 'application', 'losses_collector', 'application')),
+      -- Coaches in the US and Canada are paid across borders, which Stripe only allows on a full account
+      -- (it asks for the card payments setting too, though Padelent still takes all the payments itself).
       'configuration', jsonb_build_object('recipient', jsonb_build_object('capabilities', jsonb_build_object(
-        'stripe_balance', jsonb_build_object('stripe_transfers', jsonb_build_object('requested', true))))),
-      'metadata', jsonb_build_object('padelent_coach', v_uid::text)), 'padelent-acct6-' || v_uid || '-' || v_country);
+        'stripe_balance', jsonb_build_object('stripe_transfers', jsonb_build_object('requested', true)))))
+        || case when v_country in ('US', 'CA') then jsonb_build_object('merchant', jsonb_build_object('capabilities', jsonb_build_object(
+             'card_payments', jsonb_build_object('requested', true)))) else '{}'::jsonb end,
+      'metadata', jsonb_build_object('padelent_coach', v_uid::text)), 'padelent-acct7-' || v_uid || '-' || v_country);
     update public.coaches set stripe_account_id = a->>'id', payout_country = v_country where id = v_uid;
     c.stripe_account_id := a->>'id';
   end if;
