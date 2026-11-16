@@ -348,21 +348,84 @@
       }
     };
   }
-  function withAudio(o, audio) { if (audio) o.p_audio = audio; return o; }
-  // Wires a text + voice composer form to an RPC sender.
+  function withAudio(o, audio, media) {
+    if (audio) o.p_audio = audio;
+    if (media) { o.p_media = media.path; o.p_media_type = media.kind; }
+    return o;
+  }
+  /* Photo or video attached to a message: picked from the phone, photos made smaller, big videos shrunk. */
+  function mediaPicker(box) {
+    var st = { file: null, kind: null, url: null };
+    function idle() {
+      if (st.url) { URL.revokeObjectURL(st.url); st.url = null; }
+      st.file = null; st.kind = null;
+      box.innerHTML = '<button type="button" class="btn sm vbtn" data-m="pick">📷 Add a photo or video</button>' +
+        '<input type="file" accept="image/*,video/*" hidden>';
+      $('[data-m=pick]', box).onclick = function () { $('input', box).click(); };
+      $('input', box).onchange = function (ev) {
+        var f = ev.target.files[0]; if (!f) return;
+        var kind = /^image\//.test(f.type) || /\.(jpe?g|png|webp|gif|heic)$/i.test(f.name || '') ? 'image' : 'video';
+        if (kind === 'image' && f.size > 30 * 1048576) { toast('That photo is too big.', true); return idle(); }
+        if (kind === 'video' && f.size > (canShrink() ? MAX_IN_MB : MAX_MB) * 1048576) { toast('That video is too big. Trim it to under 2 minutes, or film at 1080p instead of 4K.', true); return idle(); }
+        if (kind === 'video') primeAudio();
+        st.file = f; st.kind = kind; st.url = URL.createObjectURL(f);
+        box.innerHTML = '<div class="vlive mprev">' + (kind === 'image' ? '<img src="' + st.url + '" alt="">' : '<video src="' + st.url + '#t=0.1" muted playsinline preload="metadata"></video>') +
+          '<span class="muted small">' + (kind === 'image' ? 'Photo' : 'Video') + ' ready to send</span><button type="button" class="btn sm" data-m="del">Remove</button></div>';
+        $('[data-m=del]', box).onclick = idle;
+      };
+    }
+    idle();
+    return {
+      has: function () { return !!st.file; },
+      kind: function () { return st.kind; },
+      // Uploads the photo or video (if any) and resolves to { path, kind }, or null.
+      upload: function (onStatus) {
+        if (!st.file) return Promise.resolve(null);
+        var f = st.file, kind = st.kind, base = me.id + '/' + Date.now() + '-' + rand();
+        var prog = function (r) { onStatus('Uploading… ' + Math.round(r * 100) + '%'); };
+        if (kind === 'image') {
+          onStatus('Sending photo…');
+          var p = /gif$/i.test(f.type) && f.size < 8 * 1048576 ? upload('chat-media', base + '.gif', f, 'image/gif', prog)
+            : toJpeg(f, 1600).then(function (b) { return upload('chat-media', base + '.jpg', b, 'image/jpeg', prog); });
+          return p.then(function (path) { return { path: path, kind: 'image' }; });
+        }
+        onStatus('Preparing video…');
+        return prepareVideo(f, function (r) { onStatus('Shrinking video… ' + Math.round(r * 100) + '%'); })
+          .then(function (v) { return upload('chat-media', base + '.' + v.ext, v.blob, v.type, prog); })
+          .then(function (path) { return { path: path, kind: 'video' }; });
+      }
+    };
+  }
+  // Wires a text + voice + photo/video composer form to an RPC sender: send(body, audio, media).
   function wireComposer(form, send, done) {
     var box = $('.vrec', form), vr = box ? voiceRecorder(box) : null;
+    var mbox = document.createElement('div'); mbox.className = 'vrec mpick';
+    if (box) box.parentNode.insertBefore(mbox, box.nextSibling); else form.insertBefore(mbox, $('.err', form));
+    var mp = mediaPicker(mbox);
     form.onsubmit = function (ev) {
       ev.preventDefault();
       var body = (form.body.value || '').trim(), e = $('.err', form); e.hidden = true;
       if (vr && vr.busy()) { e.textContent = 'Stop the recording first.'; e.hidden = false; return; }
-      if (!body && !(vr && vr.blob())) { e.textContent = 'Write a message or record a voice note first.'; e.hidden = false; return; }
+      if (!body && !(vr && vr.blob()) && !mp.has()) { e.textContent = 'Write a message, record a voice note or add a photo or video first.'; e.hidden = false; return; }
       var btn = $('button[type=submit]', form);
       if (btn.getAttribute('data-confirm') && !confirm(btn.getAttribute('data-confirm'))) return;
-      btn.disabled = true; var label = btn.textContent; btn.textContent = vr && vr.blob() ? 'Sending voice note…' : 'Sending…';
-      (vr ? vr.upload() : Promise.resolve(null)).then(function (audio) { return send(body, audio); }).then(done)
+      btn.disabled = true; var label = btn.textContent;
+      var status = function (t) { btn.textContent = t; };
+      status(vr && vr.blob() ? 'Sending voice note…' : 'Sending…');
+      var audio = null;
+      (vr ? vr.upload() : Promise.resolve(null))
+        .then(function (a) { audio = a; return mp.upload(status); })
+        .then(function (media) { status('Sending…'); return send(body, audio, media); }).then(done)
         .catch(function (err) { e.textContent = err.message; e.hidden = false; btn.disabled = false; btn.textContent = label; });
     };
+  }
+  function hydrateMedia(root) {
+    $$('[data-media]', root).forEach(function (el) {
+      signedUrl(el.getAttribute('data-media'), 'chat-media').then(function (u) {
+        if (el.tagName === 'VIDEO') { el.src = u + '#t=0.1'; return; }
+        var img = $('img', el); if (img) img.src = u; el.href = u;
+      }).catch(function () { el.outerHTML = '<div class="file small muted">This ' + (el.tagName === 'VIDEO' ? 'video' : 'photo') + ' could not be loaded.</div>'; });
+    });
   }
   function hydrateVideos(root) {
     $$('video[data-path]', root).forEach(function (v) {
@@ -1934,7 +1997,7 @@
         '<p class="muted small">Goes to everyone you pick as a message from you, plus an email. Replies come back here as private chats.</p>' +
         '<div class="chips" id="aud">' + [['coaches', 'Coaches'], ['players', 'Players'], ['everyone', 'Everyone']].map(function (x) {
           return '<button type="button" class="chip' + (x[0] === aud ? ' on' : '') + '" data-aud="' + x[0] + '">' + x[1] + ' (' + counts[x[0]] + ')</button>'; }).join('') + '</div>' +
-        '<textarea class="in" name="body" rows="7" maxlength="5000" placeholder="Hey guys, hope you are getting on well this week… (or just record a voice note)"></textarea>' +
+        '<textarea class="in" name="body" rows="7" maxlength="5000" placeholder="Hey guys, hope you are getting on well this week… (or just send a voice note, photo or video)"></textarea>' +
         '<div class="vrec"></div>' +
         '<p class="err" id="e" hidden></p><div class="acts" style="justify-content:flex-end"><button class="btn acc" type="submit">Send broadcast</button></div></form>' +
         '<section class="section"><h2>Conversations</h2>' + (a.threads.length ? '<div class="list">' + a.threads.map(function (th) {
@@ -1944,13 +2007,13 @@
             '<span class="side"><span class="muted small">' + when(th.last_at) + '</span>' + (th.unread > 0 ? '<span class="st open fresh"><i></i>' + th.unread + ' new</span>' : '') + '</span></a>';
         }).join('') + '</div>' : '<div class="panel muted">No replies yet. When someone replies to a broadcast, it shows up here.</div>') + '</section>' +
         (a.broadcasts.length ? '<section class="section"><h2>Recent broadcasts</h2><div class="panel">' + a.broadcasts.map(function (b) {
-          return '<div class="rv"><div class="muted small">' + when(b.created_at) + ' · to ' + b.audience + ' · ' + b.recipients + ' people' + (b.voice ? ' · 🎙️ voice note' : '') + '</div>' + (b.body ? '<p style="white-space:pre-wrap">' + esc(b.body) + '</p>' : '') + '</div>'; }).join('') + '</div></section>' : '')));
+          return '<div class="rv"><div class="muted small">' + when(b.created_at) + ' · to ' + b.audience + ' · ' + b.recipients + ' people' + (b.media === 'image' ? ' · 📷 photo' : b.media === 'video' ? ' · 🎬 video' : '') + (b.voice ? ' · 🎙️ voice note' : '') + '</div>' + (b.body ? '<p style="white-space:pre-wrap">' + esc(b.body) + '</p>' : '') + '</div>'; }).join('') + '</div></section>' : '')));
       $$('#aud .chip').forEach(function (b) { b.onclick = function () { aud = b.getAttribute('data-aud'); $$('#aud .chip').forEach(function (x) { x.classList.toggle('on', x === b); }); }; });
       var bbtn = $('#bf button[type=submit]');
       function setConfirm() { bbtn.setAttribute('data-confirm', 'Send this to ' + counts[aud] + ' ' + (aud === 'everyone' ? 'people' : aud) + '? They will also get an email.'); }
       setConfirm();
       $$('#aud .chip').forEach(function (b) { b.addEventListener('click', setConfirm); });
-      wireComposer($('#bf'), function (body, audio) { return rpc('admin_broadcast', withAudio({ p_audience: aud, p_body: body }, audio)); },
+      wireComposer($('#bf'), function (body, audio, media) { return rpc('admin_broadcast', withAudio({ p_audience: aud, p_body: body }, audio, media)); },
         function (n) { toast('Sent to ' + n + ' ' + (n === 1 ? 'person' : 'people')); pageAdminMessages(); });
     }).catch(function (e) { if (t === navToken) failed('admin', e); });
   }
@@ -1962,6 +2025,8 @@
       return '<div class="msg' + (adminSide ? ' coach' : '') + '"><span class="avatar' + (adminSide ? ' acc' : '') + '">' + (adminSide ? 'P' : esc(otherIni)) + '</span>' +
         '<div class="bub"><div class="who"><b>' + esc(mine ? 'You' : otherName) + '</b><span class="muted small">' + when(m.created_at) + (m.broadcast ? ' · sent to everyone' : '') + '</span></div>' +
         (m.body ? '<div class="body">' + esc(m.body) + '</div>' : '') +
+        (m.media_path && m.media_type === 'image' ? '<a class="chatimg" data-media="' + esc(m.media_path) + '" target="_blank" rel="noopener"><img alt="Photo" loading="lazy"></a>' : '') +
+        (m.media_path && m.media_type === 'video' ? '<video class="chatvid" controls playsinline preload="metadata" data-media="' + esc(m.media_path) + '"></video>' : '') +
         (m.audio_path ? '<div class="voice"><span aria-hidden="true">🎙️</span><audio controls preload="metadata" data-voice="' + esc(m.audio_path) + '"></audio></div>' : '') +
         (m.image_url && /^https:\/\//.test(m.image_url) ? '<a class="chatimg" href="' + esc(m.image_url) + '" target="_blank" rel="noopener"><img src="' + esc(m.image_url) + '" alt="How to add Padelent to your home screen" loading="lazy"></a>' : '') +
         '</div></div>';
@@ -1983,8 +2048,8 @@
         '<form class="panel composer" id="cf"><h3>Message ' + esc(firstName(th.full_name) || 'them') + '</h3><textarea class="in" name="body" rows="4" maxlength="5000"></textarea>' +
         '<div class="vrec"></div><p class="err" id="e" hidden></p><div class="acts" style="justify-content:flex-end"><button class="btn acc" type="submit">Send</button></div></form></section>', { narrow: true }));
       var last = $$('.msg').pop(); if (last) last.scrollIntoView({ block: 'center' });
-      hydrateAudio();
-      wireComposer($('#cf'), function (body, audio) { return rpc('admin_send', withAudio({ p_user: userId, p_body: body }, audio)); },
+      hydrateAudio(); hydrateMedia();
+      wireComposer($('#cf'), function (body, audio, media) { return rpc('admin_send', withAudio({ p_user: userId, p_body: body }, audio, media)); },
         function () { toast('Sent'); pageAdminChat(userId); });
     }).catch(function (e) { if (t === navToken) failed('admin', e); });
   }
@@ -2003,8 +2068,8 @@
         '<form class="panel composer" id="cf"><h3>Message ' + esc(an) + '</h3><textarea class="in" name="body" rows="4" maxlength="5000" placeholder="Questions, ideas or feedback"></textarea>' +
         '<div class="vrec"></div><p class="err" id="e" hidden></p><div class="acts" style="justify-content:flex-end"><button class="btn acc" type="submit">Send</button></div></form></section>', { narrow: true }));
       var last = $$('.msg').pop(); if (last) last.scrollIntoView({ block: 'center' });
-      hydrateAudio();
-      wireComposer($('#cf'), function (body, audio) { return rpc('send_inbox_message', withAudio({ p_body: body }, audio)); },
+      hydrateAudio(); hydrateMedia();
+      wireComposer($('#cf'), function (body, audio, media) { return rpc('send_inbox_message', withAudio({ p_body: body }, audio, media)); },
         function () { toast('Sent to ' + an); pageInbox(); });
     }).catch(function (e) { if (t === navToken) failed('', e); });
   }

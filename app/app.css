@@ -334,3 +334,9 @@ a.lopt:hover, a.lopt:focus-visible { border-color: var(--acc); }
 /* Local price next to a price in pounds */
 .fx { color: var(--muted); font-weight: 500; font-size: .78em; margin-left: 2px; white-space: nowrap; letter-spacing: 0; font-family: var(--body); }
 .fx:empty { display: none; }
+
+/* Photos and videos in messages */
+.chatvid { display: block; margin-top: 10px; width: 100%; max-width: 340px; max-height: 420px; border-radius: 14px; background: #000; }
+.chatimg[data-media] img { min-height: 120px; background: var(--panel2, rgba(255,255,255,.04)); }
+.mprev img, .mprev video { width: 64px; height: 64px; object-fit: cover; border-radius: 10px; background: #000; flex: none; }
+.mpick { margin-top: 8px; }
